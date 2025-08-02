@@ -114,19 +114,13 @@ def main():
         
         # Example Data
         st.subheader("📁 Example Data")
-        st.write("**Transcriptomics Examples:**")
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("🧠 Parkinson's Disease", help="Gene expression in dopaminergic neurons"):
-                st.session_state.load_example = "parkinson"
-                st.session_state.example_omics_type = OmicsType.TRANSCRIPTOMICS
-        with col2:
-            if st.button("🦠 COVID-19 ARDS", help="Gene expression in respiratory samples"):
-                st.session_state.load_example = "covid"
-                st.session_state.example_omics_type = OmicsType.TRANSCRIPTOMICS
+        st.write("**Transcriptomics Example:**")
+        if st.button("🦠 COVID-19 ARDS", help="Gene expression in respiratory samples"):
+            st.session_state.load_example = "covid"
+            st.session_state.example_omics_type = OmicsType.TRANSCRIPTOMICS
         
-        st.write("**Other Omics Examples:**")
-        st.info("💡 Upload your own data files for proteomics, metabolomics, and other omics types!")
+        st.write("**Other Omics Types:**")
+        st.info("💡 Upload your own data files for proteomics, metabolomics, genomics, metagenomics, epigenomics, and lipidomics analysis!")
     
     # Main content area
     col1, col2 = st.columns([1, 1])
@@ -244,12 +238,7 @@ def main():
             example = st.session_state.load_example
             example_omics_type = getattr(st.session_state, 'example_omics_type', OmicsType.TRANSCRIPTOMICS)
             
-            if example == "parkinson":
-                data_file_path = "examples/sample_de_results.csv"
-                metadata_file_path = "examples/example_metadata.json"
-                st.info("🧠 Loaded Parkinson's disease transcriptomics data")
-                
-            elif example == "covid":
+            if example == "covid":
                 data_file_path = "covid_data/covid_deg_fixed.csv"
                 metadata_file_path = "covid_data/covid_metadata.json"
                 st.info("🦠 Loaded COVID-19 ARDS transcriptomics data")

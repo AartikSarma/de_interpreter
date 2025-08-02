@@ -41,7 +41,7 @@ The app will open in your browser at `http://localhost:8501`
 ### Input Methods
 - **File Upload**: Upload your own omics results (CSV/TSV/Excel) and metadata (JSON)
 - **Manual Entry**: Enter experimental metadata through web forms with omics-specific fields
-- **Example Data**: Load pre-configured transcriptomics datasets (Parkinson's, COVID-19)
+- **Example Data**: Load pre-configured COVID-19 ARDS transcriptomics dataset
 
 ### Analysis Parameters
 - **Omics Type Selection**: Choose your data type for specialized analysis
@@ -113,11 +113,6 @@ If your DE results have different column names, you can:
 3. Check the example files for reference
 
 ## 📊 Example Datasets
-
-### Parkinson's Disease
-- **Context**: α-synuclein fibril treatment in dopaminergic neurons
-- **Genes**: 10 genes with known PD associations
-- **Focus**: Mitochondrial dysfunction, neurodegeneration
 
 ### COVID-19 ARDS
 - **Context**: COVID-19 ARDS vs Non-COVID ARDS
