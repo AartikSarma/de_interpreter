@@ -3,23 +3,23 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
-This is a Multi-Omics Interpretation Pipeline that transforms differential omics results into literature-backed, disease-contextualized discussions. The pipeline supports transcriptomics, proteomics, metabolomics, genomics, metagenomics, epigenomics, and lipidomics data. It uses the Claude API for synthesis and PMC (PubMed Central) for literature mining with full-text access.
+This is a **Unified Multi-Omics Interpretation Pipeline** that transforms differential omics results into literature-backed, disease-contextualized discussions. The pipeline supports **7 omics types**: transcriptomics, proteomics, metabolomics, genomics, metagenomics, epigenomics, and lipidomics with **automatic omics type detection**. It uses the Claude API for synthesis and PMC (PubMed Central) for literature mining with full-text access and optional AI-powered relevance scoring.
 
 ## Core Architecture
 
 ### Key Components
-1. **Input Processing**: Parses DE results (CSV/TSV) and experimental metadata
-2. **Gene Prioritization**: Filters and ranks genes by statistical and biological importance
-3. **Literature Mining**: Uses PMC (PubMed Central) to retrieve full-text research papers
-4. **Synthesis Engine**: Uses Claude API to generate coherent discussions
-5. **Report Generator**: Produces structured, referenced output documents
+1. **Unified Input Processing**: Automatically detects and parses any omics data type with intelligent column mapping
+2. **Omics-Aware Prioritization**: Filters and ranks features using omics-specific biological scoring
+3. **Literature Mining**: Uses PMC for full-text papers with optional BioBERT/TF-IDF/BM25 relevance scoring
+4. **Unified Synthesis Engine**: Generates omics-specific discussions using specialized prompts
+5. **Omics-Agnostic Reporting**: Produces structured reports adapted to each omics type
 
 ### Main Modules
-- `src/parsers/`: Input parsing for DE results and metadata
-- `src/prioritization/`: Gene ranking and clustering algorithms
-- `src/literature/`: PMC integration and paper processing with full-text extraction
-- `src/synthesis/`: Claude API integration and prompt engineering
-- `src/reporting/`: Output generation and formatting
+- `src/parsers/`: **Unified parsing** for all omics data types with auto-detection
+- `src/prioritization/`: **Omics-aware** feature ranking with type-specific scoring
+- `src/literature/`: PMC integration with **BioBERT scoring** and full-text extraction
+- `src/synthesis/`: Claude API integration with **omics-specific prompts**
+- `src/reporting/`: **Adaptive reporting** for all omics types
 
 ## Usage Options
 
@@ -35,19 +35,46 @@ streamlit run streamlit_app.py
 ```
 
 ### Command Line Interface
-```bash
-# Run the agent directly
-python -m de_interpreter.main --de-file results.csv --metadata metadata.json --output report.md
 
-# Advanced options
+**Simplified Pipeline (Recommended)**
+```bash
+# Auto-detects omics type from data
+python -m de_interpreter.main \
+  --de-file results.csv \
+  --metadata metadata.json \
+  --output report.md
+
+# Advanced options with scoring
 python -m de_interpreter.main \
   --de-file results.csv \
   --metadata metadata.json \
   --output report.md \
-  --top-n 100 \               # Prioritize top 100 genes
-  --max-analysis 25 \         # Analyze top 25 genes in detail
-  --no-cache \                # Disable literature caching
-  --use-futurehouse           # Use FutureHouse API instead of PMC
+  --top-n 100 \                   # Prioritize top 100 features
+  --max-analysis 25 \             # Analyze top 25 features in detail
+  --use-scoring \                 # Enable literature relevance scoring
+  --scorer-type biobert \         # Use BioBERT for best quality (tfidf, bm25, biobert)
+  --biobert-model microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract \
+  --no-cache                      # Disable literature caching
+```
+
+### Literature Scoring Options
+
+Install optional scoring dependencies:
+```bash
+pip install -r requirements-scoring.txt
+```
+
+Scoring methods available:
+```bash
+# TF-IDF scoring (fast, good baseline)
+python -m de_interpreter.main --de-file data.csv --use-scoring --scorer-type tfidf
+
+# BM25 scoring (balanced speed/quality)  
+python -m de_interpreter.main --de-file data.csv --use-scoring --scorer-type bm25
+
+# BioBERT scoring (best quality, slower)
+python -m de_interpreter.main --de-file data.csv --use-scoring --scorer-type biobert \
+  --biobert-model dmis-lab/biobert-base-cased-v1.1
 ```
 
 ## Development Commands
@@ -106,13 +133,19 @@ FUTUREHOUSE_API_KEY=your_futurehouse_api_key  # Optional - PMC is used by defaul
 
 ### Literature Search Pattern
 ```python
-# Batch queries for efficiency
-gene_batches = chunk_genes(prioritized_genes, batch_size=10)
-for batch in gene_batches:
-    query = build_query(genes=batch, disease=context.disease)
-    papers = futurehouse_api.search(query, limit=20)
-    cache_results(papers)
+# PMC with optional scoring for enhanced relevance
+async with PMCClient(use_scoring=True, scorer_type="biobert") as client:
+    for gene in prioritized_genes:
+        query = f"{gene} {disease} expression function"
+        papers = await client.search(query, limit=10)
+        cache_results(papers)
 ```
+
+### Scoring Options
+- **PMC Only**: Fast, free full-text retrieval without relevance ranking
+- **PMC + TF-IDF**: Balanced speed and relevance using traditional scoring
+- **PMC + BM25**: Good relevance ranking with moderate computational cost
+- **PMC + BioBERT**: Highest quality semantic matching (requires ML dependencies)
 
 ### Synthesis Prompt Structure
 1. Provide gene information and expression change

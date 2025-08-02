@@ -14,15 +14,9 @@ import os
 # Load environment variables
 load_dotenv()
 
-# Add src to path for imports
-sys.path.insert(0, str(Path(__file__).parent / "src"))
-
-# Import both traditional and omics pipelines
-from de_interpreter.main import DEInterpreter
-from de_interpreter.omics_main import OmicsInterpreter
-from de_interpreter.parsers import DEParser, MetadataParser
+# Import simplified pipeline
+from de_interpreter.main import SimplifiedPipeline, AnalysisConfig
 from de_interpreter.parsers.omics_data import OmicsType
-from de_interpreter.parsers.omics_parser import OmicsParser, OmicsMetadataParser
 
 
 def main():
@@ -50,19 +44,12 @@ def main():
         # API Key Status
         st.subheader("API Keys")
         anthropic_key = os.getenv("ANTHROPIC_API_KEY")
-        futurehouse_key = os.getenv("FUTUREHOUSE_API_KEY")
         
         if anthropic_key:
             st.success("✅ Anthropic API key loaded")
         else:
-            st.error("❌ Anthropic API key missing")
-            st.info("Add ANTHROPIC_API_KEY to your .env file")
-            
-        if futurehouse_key:
-            st.success("✅ FutureHouse API key loaded")
-        else:
-            st.error("❌ FutureHouse API key missing")
-            st.info("Add FUTUREHOUSE_API_KEY to your .env file")
+            st.warning("⚠️ Anthropic API key missing")
+            st.info("Add ANTHROPIC_API_KEY to your .env file for AI synthesis. Pipeline will run with basic discussions without it.")
         
         st.divider()
         
@@ -109,6 +96,47 @@ def main():
         max_analysis_features = st.slider(f"Max {feature_name} for detailed analysis", 5, 50, 20,
                                          help=f"Number of top {feature_name} for literature mining and synthesis")
         use_cache = st.checkbox("Use literature cache", value=True)
+        
+        # Literature Scoring Options
+        st.subheader("📊 Literature Scoring")
+        use_scoring = st.checkbox("Enable relevance scoring", value=False, 
+                                 help="Use AI-powered scoring to rank literature by relevance")
+        
+        scorer_type = "tfidf"  # Default
+        biobert_model = "sentence-transformers/all-MiniLM-L6-v2"
+        
+        if use_scoring:
+            scorer_options = {
+                "TF-IDF (Fast)": "tfidf",
+                "BM25 (Balanced)": "bm25", 
+                "BioBERT (Best Quality)": "biobert"
+            }
+            selected_scorer = st.selectbox(
+                "Scoring method:",
+                options=list(scorer_options.keys()),
+                index=0,
+                help="Choose scoring method - BioBERT provides best quality but requires more compute"
+            )
+            scorer_type = scorer_options[selected_scorer]
+            
+            # Show scoring info
+            if scorer_type == "biobert":
+                st.info("🧠 BioBERT: Highest quality semantic matching (slower)")
+                # Allow custom BioBERT model
+                biobert_model = st.selectbox(
+                    "BioBERT Model:",
+                    options=[
+                        "sentence-transformers/all-MiniLM-L6-v2",
+                        "microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract",
+                        "dmis-lab/biobert-base-cased-v1.1"
+                    ],
+                    index=0,
+                    help="Choose BioBERT model variant"
+                )
+            elif scorer_type == "bm25":
+                st.info("⚡ BM25: Good relevance ranking (balanced)")
+            else:
+                st.info("🚀 TF-IDF: Fast traditional scoring (fastest)")
         
         st.divider()
         
@@ -272,28 +300,37 @@ def main():
         has_metadata = (metadata is not None or hasattr(st.session_state, 'example_metadata'))
         can_run = has_data and has_metadata
         
-        if not (anthropic_key and futurehouse_key):
-            st.error("⚠️ API keys required to run analysis")
-            can_run = False
+        # Note: Analysis can run without API keys (just with basic discussions)
+        if not anthropic_key:
+            st.info("💡 Running without Anthropic API key - will generate basic discussions")
         
         if st.button("🚀 Run Analysis", disabled=not can_run, type="primary"):
-            run_omics_analysis(
+            run_simplified_analysis(
                 data_file, 
                 metadata, 
                 selected_omics_type,
                 top_n_features, 
                 max_analysis_features, 
                 use_cache,
+                use_scoring,
+                scorer_type,
+                biobert_model,
                 feature_name
             )
 
 
-def run_omics_analysis(data_file, metadata, omics_type, top_n_features, max_analysis_features, use_cache, feature_name):
-    """Run the multi-omics interpretation analysis."""
+def run_simplified_analysis(data_file, metadata, omics_type, top_n_features, max_analysis_features, use_cache, use_scoring, scorer_type, biobert_model, feature_name):
+    """Run the simplified multi-omics interpretation analysis."""
     
     # Create progress indicators
     progress_bar = st.progress(0)
     status_text = st.empty()
+    
+    # Create progress callback
+    def update_progress(message, progress):
+        if progress >= 0:
+            progress_bar.progress(min(progress, 100))
+        status_text.text(message)
     
     try:
         # Save uploaded files to temporary location
@@ -314,39 +351,44 @@ def run_omics_analysis(data_file, metadata, omics_type, top_n_features, max_anal
                     return
             
             # Handle metadata
+            metadata_path = None
             if metadata is not None:
                 metadata_path = temp_path / "metadata.json"
                 with open(metadata_path, "w") as f:
                     json.dump(metadata, f, indent=2)
-            else:
-                # Use example metadata
-                if hasattr(st.session_state, 'example_metadata_path'):
-                    metadata_path = Path(st.session_state.example_metadata_path)
-                else:
-                    st.error("No metadata available")
-                    return
+            elif hasattr(st.session_state, 'example_metadata_path'):
+                metadata_path = Path(st.session_state.example_metadata_path)
             
             progress_bar.progress(10)
-            status_text.text("Initializing omics pipeline...")
+            status_text.text("Initializing simplified pipeline...")
             
-            # Create omics interpreter (using PMC by default)
-            interpreter = OmicsInterpreter(
-                omics_type=omics_type,
+            # Get API keys
+            anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+            
+            # Create analysis config
+            config = AnalysisConfig(
+                top_n=top_n_features,
+                max_analysis=max_analysis_features,
                 use_cache=use_cache,
-                top_n_features=top_n_features,
-                max_analysis_features=max_analysis_features,
-                use_pmc=True
+                anthropic_api_key=anthropic_key,
+                progress_callback=update_progress,
+                use_scoring=use_scoring,
+                scorer_type=scorer_type,
+                biobert_model=biobert_model
             )
+            
+            # Create simplified pipeline
+            pipeline = SimplifiedPipeline(config)
             
             progress_bar.progress(20)
             status_text.text(f"Running {omics_type.value} analysis...")
             
             # Run analysis in async context
             async def run_pipeline():
-                return await interpreter.run(
-                    data_file=data_path,
-                    metadata_file=metadata_path,
-                    output_name="streamlit_omics_analysis"
+                return await pipeline.run_analysis(
+                    de_file=str(data_path),
+                    metadata_file=str(metadata_path) if metadata_path else None,
+                    output_name="streamlit_analysis"
                 )
             
             # Run the pipeline
@@ -359,7 +401,7 @@ def run_omics_analysis(data_file, metadata, omics_type, top_n_features, max_anal
                 status_text.text(f"{omics_type.value.title()} analysis complete!")
                 
                 # Display results
-                display_omics_results(report_path, omics_type, feature_name)
+                display_analysis_results(report_path, omics_type, feature_name)
                 
             finally:
                 loop.close()
@@ -370,8 +412,8 @@ def run_omics_analysis(data_file, metadata, omics_type, top_n_features, max_anal
         status_text.text("Analysis failed")
 
 
-def display_omics_results(report_path: Path, omics_type: OmicsType, feature_name: str):
-    """Display the omics analysis results."""
+def display_analysis_results(report_path: Path, omics_type: OmicsType, feature_name: str):
+    """Display the analysis results."""
     st.header(f"📊 {omics_type.value.title()} Analysis Results")
     
     if report_path.exists():

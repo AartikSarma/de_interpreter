@@ -1,0 +1,18 @@
+# Optional dependencies for literature scoring functionality
+# Install with: pip install -r requirements-scoring.txt
+
+# Core scoring dependencies
+sentence-transformers>=2.0.0
+scikit-learn>=1.0.0
+numpy>=1.20.0
+
+# For CUDA support (optional, for faster BioBERT processing)
+# torch>=1.9.0
+
+# Alternative BioBERT models (will be downloaded automatically when used)
+# These don't need to be installed via pip - they're model weights downloaded by sentence-transformers
+
+# Recommended models:
+# - sentence-transformers/all-MiniLM-L6-v2 (fast baseline)
+# - microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract (biomedical)
+# - dmis-lab/biobert-base-cased-v1.1 (BioBERT original)
