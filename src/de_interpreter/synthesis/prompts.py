@@ -189,19 +189,49 @@ Format as a structured executive summary with clear sections and bullet points f
 
         summaries = []
         for paper in papers[:limit]:
-            # Extract key sentence from abstract
-            abstract_sentences = paper.abstract.split(". ")
-            # Try to find most relevant sentence (simple heuristic)
-            relevant_sentence = abstract_sentences[0]
-            for sent in abstract_sentences:
-                if any(
-                    keyword in sent.lower()
-                    for keyword in ["expression", "regulate", "pathway", "mechanism"]
-                ):
-                    relevant_sentence = sent
-                    break
-
-            summary = f"• {paper.get_citation()}: {relevant_sentence}"
+            # Use full text if available (PMC papers), otherwise use abstract
+            text_source = paper.full_text if hasattr(paper, 'full_text') and paper.full_text else paper.abstract
+            
+            if text_source:
+                # For full text, extract more relevant sections
+                if hasattr(paper, 'full_text') and paper.full_text and len(paper.full_text) > 1000:
+                    # Extract key sections from full text
+                    text_lower = text_source.lower()
+                    relevant_excerpts = []
+                    
+                    # Look for sections mentioning key terms
+                    sentences = text_source.split(". ")
+                    for sent in sentences[:100]:  # Limit to first 100 sentences to avoid too much text
+                        if any(keyword in sent.lower() for keyword in [
+                            "expression", "regulate", "pathway", "mechanism", "function", 
+                            "role", "associated", "involved", "target", "therapeutic"
+                        ]):
+                            relevant_excerpts.append(sent.strip())
+                            if len(relevant_excerpts) >= 3:  # Limit to 3 key excerpts
+                                break
+                    
+                    if relevant_excerpts:
+                        summary = f"• {paper.get_citation()}: {' | '.join(relevant_excerpts[:2])}"
+                    else:
+                        # Fall back to abstract
+                        abstract_sentences = paper.abstract.split(". ")
+                        relevant_sentence = abstract_sentences[0] if abstract_sentences else "No abstract available."
+                        summary = f"• {paper.get_citation()}: {relevant_sentence}"
+                else:
+                    # Use abstract approach for shorter texts
+                    abstract_sentences = text_source.split(". ")
+                    relevant_sentence = abstract_sentences[0]
+                    for sent in abstract_sentences:
+                        if any(
+                            keyword in sent.lower()
+                            for keyword in ["expression", "regulate", "pathway", "mechanism"]
+                        ):
+                            relevant_sentence = sent
+                            break
+                    summary = f"• {paper.get_citation()}: {relevant_sentence}"
+            else:
+                summary = f"• {paper.get_citation()}: No abstract available."
+            
             summaries.append(summary)
 
         return "\n".join(summaries)

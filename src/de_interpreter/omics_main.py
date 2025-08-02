@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from .parsers.omics_data import OmicsType
 from .parsers.omics_parser import OmicsParser, OmicsMetadataParser
 from .prioritization.omics_prioritizer import OmicsPrioritizer
-from .literature import FutureHouseClient, LiteratureCache
+from .literature import FutureHouseClient, PMCClient, LiteratureCache
 from .synthesis import ClaudeSynthesizer
 from .reporting import ReportGenerator
 
@@ -24,9 +24,11 @@ class OmicsInterpreter:
         use_cache: bool = True,
         top_n_features: int = 50,
         max_analysis_features: Optional[int] = None,
+        use_pmc: bool = True,
     ):
         self.omics_type = omics_type
         self.use_cache = use_cache
+        self.use_pmc = use_pmc
         self.top_n_features = top_n_features
         # Default to top_n_features for analysis, but allow override
         self.max_analysis_features = max_analysis_features or min(top_n_features, 30)
@@ -123,46 +125,92 @@ class OmicsInterpreter:
         """Fetch literature for prioritized features."""
         feature_papers = {}
 
-        async with FutureHouseClient() as client:
-            # Prepare queries
-            queries = []
-            feature_keys = []
+        # Choose literature client based on configuration
+        if self.use_pmc:
+            print("   - Using PMC for literature retrieval...")
+            async with PMCClient() as client:
+                # Prepare queries
+                queries = []
+                feature_keys = []
 
-            for feature in prioritized_features[: self.max_analysis_features]:
-                feature_key = feature.display_name
-                feature_keys.append(feature_key)
+                for feature in prioritized_features[: self.max_analysis_features]:
+                    feature_key = feature.display_name
+                    feature_keys.append(feature_key)
 
-                # Check cache first
-                if self.cache:
-                    # Create omics-aware query
-                    query = f"{feature_key} {context.disease} {context.get_omics_context()}"
-                    cached = self.cache.get(query)
-                    if cached:
-                        feature_papers[feature_key] = cached.papers
-                        continue
-
-                queries.append(feature_key)
-
-            # Batch fetch uncached features
-            if queries:
-                print(f"   - Fetching literature for {len(queries)} {context.get_feature_type_name()}s...")
-
-                # Create omics-aware search queries
-                search_queries = [
-                    f"{feature} {context.disease} {context.get_omics_context()}" 
-                    for feature in queries
-                ]
-
-                # Batch search
-                results = await client.batch_search(search_queries, limit_per_query=10)
-
-                # Process results
-                for feature_key, result in zip(queries, results):
-                    feature_papers[feature_key] = result.papers
-
-                    # Cache results
+                    # Check cache first
                     if self.cache:
-                        self.cache.set(result)
+                        # Create omics-aware query
+                        query = f"{feature_key} {context.disease} {context.get_omics_context()}"
+                        cached = self.cache.get(query)
+                        if cached:
+                            feature_papers[feature_key] = cached.papers
+                            continue
+
+                    queries.append(feature_key)
+
+                # Batch fetch uncached features
+                if queries:
+                    print(f"   - Fetching literature for {len(queries)} {context.get_feature_type_name()}s...")
+
+                    # Create omics-aware search queries
+                    search_queries = [
+                        f"{feature} {context.disease} {context.get_omics_context()}" 
+                        for feature in queries
+                    ]
+
+                    # Batch search with smaller limit for PMC
+                    results = await client.batch_search(search_queries, limit_per_query=5)
+
+                    # Process results
+                    for feature_key, result in zip(queries, results):
+                        feature_papers[feature_key] = result.papers
+
+                        # Cache results
+                        if self.cache:
+                            self.cache.set(result)
+
+        else:
+            print("   - Using FutureHouse for literature retrieval...")
+            async with FutureHouseClient() as client:
+                # Prepare queries
+                queries = []
+                feature_keys = []
+
+                for feature in prioritized_features[: self.max_analysis_features]:
+                    feature_key = feature.display_name
+                    feature_keys.append(feature_key)
+
+                    # Check cache first
+                    if self.cache:
+                        # Create omics-aware query
+                        query = f"{feature_key} {context.disease} {context.get_omics_context()}"
+                        cached = self.cache.get(query)
+                        if cached:
+                            feature_papers[feature_key] = cached.papers
+                            continue
+
+                    queries.append(feature_key)
+
+                # Batch fetch uncached features
+                if queries:
+                    print(f"   - Fetching literature for {len(queries)} {context.get_feature_type_name()}s...")
+
+                    # Create omics-aware search queries
+                    search_queries = [
+                        f"{feature} {context.disease} {context.get_omics_context()}" 
+                        for feature in queries
+                    ]
+
+                    # Batch search
+                    results = await client.batch_search(search_queries, limit_per_query=10)
+
+                    # Process results
+                    for feature_key, result in zip(queries, results):
+                        feature_papers[feature_key] = result.papers
+
+                        # Cache results
+                        if self.cache:
+                            self.cache.set(result)
 
         return feature_papers
 

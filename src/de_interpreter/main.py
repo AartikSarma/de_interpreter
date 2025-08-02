@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 from .parsers import DEParser, MetadataParser
 from .prioritization import GenePrioritizer
-from .literature import FutureHouseClient, LiteratureCache
+from .literature import FutureHouseClient, PMCClient, LiteratureCache
 from .synthesis import ClaudeSynthesizer
 from .reporting import ReportGenerator
 
@@ -22,8 +22,10 @@ class DEInterpreter:
         use_cache: bool = True,
         top_n_genes: int = 50,
         max_analysis_genes: Optional[int] = None,
+        use_pmc: bool = True,
     ):
         self.use_cache = use_cache
+        self.use_pmc = use_pmc
         self.top_n_genes = top_n_genes
         # Default to top_n_genes for analysis, but allow override
         self.max_analysis_genes = max_analysis_genes or min(top_n_genes, 30)
@@ -112,42 +114,84 @@ class DEInterpreter:
         """Fetch literature for prioritized genes."""
         gene_papers = {}
 
-        async with FutureHouseClient() as client:
-            # Prepare queries
-            queries = []
-            gene_keys = []
+        # Choose literature client based on configuration
+        if self.use_pmc:
+            print("   - Using PMC for literature retrieval...")
+            async with PMCClient() as client:
+                # Prepare queries
+                queries = []
+                gene_keys = []
 
-            for gene in prioritized_genes[: self.top_n_genes]:
-                gene_key = gene.gene_symbol or gene.gene_id
-                gene_keys.append(gene_key)
+                for gene in prioritized_genes[: self.top_n_genes]:
+                    gene_key = gene.gene_symbol or gene.gene_id
+                    gene_keys.append(gene_key)
 
-                # Check cache first
-                if self.cache:
-                    query = f"{gene_key} {context.disease}"
-                    cached = self.cache.get(query)
-                    if cached:
-                        gene_papers[gene_key] = cached.papers
-                        continue
-
-                queries.append(gene_key)
-
-            # Batch fetch uncached genes
-            if queries:
-                print(f"   - Fetching literature for {len(queries)} genes...")
-
-                # Create search queries
-                search_queries = [f"{gene} {context.disease}" for gene in queries]
-
-                # Batch search
-                results = await client.batch_search(search_queries, limit_per_query=10)
-
-                # Process results
-                for gene_key, result in zip(queries, results):
-                    gene_papers[gene_key] = result.papers
-
-                    # Cache results
+                    # Check cache first
                     if self.cache:
-                        self.cache.set(result)
+                        query = f"{gene_key} {context.disease}"
+                        cached = self.cache.get(query)
+                        if cached:
+                            gene_papers[gene_key] = cached.papers
+                            continue
+
+                    queries.append(gene_key)
+
+                # Batch fetch uncached genes
+                if queries:
+                    print(f"   - Fetching literature for {len(queries)} genes...")
+
+                    # Create search queries
+                    search_queries = [f"{gene} {context.disease}" for gene in queries]
+
+                    # Batch search
+                    results = await client.batch_search(search_queries, limit_per_query=5)
+
+                    # Process results
+                    for gene_key, result in zip(queries, results):
+                        gene_papers[gene_key] = result.papers
+
+                        # Cache results
+                        if self.cache:
+                            self.cache.set(result)
+
+        else:
+            print("   - Using FutureHouse for literature retrieval...")
+            async with FutureHouseClient() as client:
+                # Prepare queries
+                queries = []
+                gene_keys = []
+
+                for gene in prioritized_genes[: self.top_n_genes]:
+                    gene_key = gene.gene_symbol or gene.gene_id
+                    gene_keys.append(gene_key)
+
+                    # Check cache first
+                    if self.cache:
+                        query = f"{gene_key} {context.disease}"
+                        cached = self.cache.get(query)
+                        if cached:
+                            gene_papers[gene_key] = cached.papers
+                            continue
+
+                    queries.append(gene_key)
+
+                # Batch fetch uncached genes
+                if queries:
+                    print(f"   - Fetching literature for {len(queries)} genes...")
+
+                    # Create search queries
+                    search_queries = [f"{gene} {context.disease}" for gene in queries]
+
+                    # Batch search
+                    results = await client.batch_search(search_queries, limit_per_query=10)
+
+                    # Process results
+                    for gene_key, result in zip(queries, results):
+                        gene_papers[gene_key] = result.papers
+
+                        # Cache results
+                        if self.cache:
+                            self.cache.set(result)
 
         return gene_papers
 
@@ -197,6 +241,10 @@ def main():
         "--no-cache", action="store_true", help="Disable literature caching"
     )
 
+    parser.add_argument(
+        "--use-futurehouse", action="store_true", help="Use FutureHouse API instead of PMC (default: PMC)"
+    )
+
     args = parser.parse_args()
 
     # Validate inputs
@@ -215,7 +263,8 @@ def main():
     interpreter = DEInterpreter(
         use_cache=not args.no_cache, 
         top_n_genes=args.top_n, 
-        max_analysis_genes=args.max_analysis
+        max_analysis_genes=args.max_analysis,
+        use_pmc=not args.use_futurehouse
     )
 
     # Run analysis
