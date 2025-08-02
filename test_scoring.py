@@ -6,13 +6,18 @@ test script to see which biobert models actually work with sentence-transformers
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
-# test models we found that should work
+# test models - prioritizing ones with safetensors and smaller sizes
 BIOBERT_MODELS = [
-    "gsarti/biobert-nli",                                      # the one i mentioned earlier
-    "pritamdeka/S-BioBert-snli-multinli-stsb",                # looks good
-    "pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb", # most comprehensive
-    "xlreator/biosyn-biobert-snomed",                          # medical ontology focus
-    "AHDMK/Sentence-GISTEmbedLoss-BioBert-Allnli-scinli",     # newer training approach
+    "sentence-transformers/all-MiniLM-L6-v2",                 # baseline - not biobert but reliable
+    "microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract",   # smaller pubmedbert variant  
+    "dmis-lab/biobert-base-cased-v1.1",                       # original biobert
+]
+
+# backup models to try if network issues persist
+BACKUP_MODELS = [
+    "gsarti/biobert-nli",                                      
+    "pritamdeka/S-BioBert-snli-multinli-stsb",                
+    "pritamdeka/BioBERT-mnli-snli-scinli-scitail-mednli-stsb", 
 ]
 
 def test_biobert_model(model_name):
@@ -21,6 +26,7 @@ def test_biobert_model(model_name):
     
     try:
         from sentence_transformers import SentenceTransformer
+        import time
         
         # test sentences - biomedical context
         sentences = [
@@ -29,8 +35,21 @@ def test_biobert_model(model_name):
             "The cat sat on the mat"  # non-biomedical control
         ]
         
-        print(f"loading model...")
-        model = SentenceTransformer(model_name)
+        print(f"loading model (this may take a while for first download)...")
+        start_time = time.time()
+        
+        # add timeout for model loading
+        try:
+            model = SentenceTransformer(model_name)
+        except Exception as e:
+            if "timeout" in str(e).lower() or "connection" in str(e).lower():
+                print(f"❌ network timeout - try again later or use cached model")
+                return False, None
+            else:
+                raise e
+        
+        load_time = time.time() - start_time
+        print(f"model loaded in {load_time:.1f}s")
         
         print(f"encoding {len(sentences)} sentences...")
         embeddings = model.encode(sentences)
