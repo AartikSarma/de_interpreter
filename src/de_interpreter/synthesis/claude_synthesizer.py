@@ -201,6 +201,71 @@ class ClaudeSynthesizer:
             confidence_score=confidence_score,
         )
 
+    def _parse_omics_response(
+        self, response_text: str, feature: PrioritizedOmicsFeature
+    ) -> GeneDiscussion:
+        """Parse Claude's response into structured discussion for omics features."""
+        # This is similar to _parse_response but adapted for omics features
+        
+        # Extract sections using simple heuristics
+        lines = response_text.strip().split("\n")
+
+        # Find main discussion
+        discussion_text = ""
+        key_findings = []
+        therapeutic_implications = ""
+        citations = []
+
+        current_section = "main"
+
+        for line in lines:
+            line = line.strip()
+
+            if not line:
+                continue
+
+            # Detect section headers
+            if "key finding" in line.lower() or "main finding" in line.lower():
+                current_section = "findings"
+                continue
+            elif "therapeutic" in line.lower() or "clinical" in line.lower():
+                current_section = "therapeutic"
+                continue
+            elif "reference" in line.lower() or "citation" in line.lower():
+                current_section = "citations"
+                continue
+
+            # Add content to appropriate section
+            if current_section == "main":
+                discussion_text += line + " "
+            elif current_section == "findings" and line.startswith(
+                ("•", "-", "*", "1", "2", "3")
+            ):
+                key_findings.append(line.lstrip("•-* 123456789."))
+            elif current_section == "therapeutic":
+                therapeutic_implications += line + " "
+            elif current_section == "citations":
+                citations.append(line)
+
+        # Clean up
+        discussion_text = discussion_text.strip()
+        therapeutic_implications = therapeutic_implications.strip() or None
+
+        # Simple confidence scoring based on content
+        confidence_score = min(
+            1.0, len(discussion_text) / 500 + len(key_findings) * 0.1
+        )
+
+        return GeneDiscussion(
+            gene_id=feature.feature_id,
+            gene_symbol=feature.feature_symbol,
+            discussion_text=discussion_text,
+            key_findings=key_findings[:5],  # Limit to 5
+            therapeutic_implications=therapeutic_implications,
+            citations=citations,
+            confidence_score=confidence_score,
+        )
+
     async def generate_executive_summary(
         self,
         discussions: List[GeneDiscussion],
@@ -273,9 +338,12 @@ class ClaudeSynthesizer:
             response_text = response.content[0].text
 
             # Parse the response
-            discussion_text, key_findings, therapeutic_implications, citations, confidence_score = (
-                self._parse_response(response_text)
-            )
+            discussion = self._parse_omics_response(response_text, feature)
+            discussion_text = discussion.discussion_text
+            key_findings = discussion.key_findings
+            therapeutic_implications = discussion.therapeutic_implications
+            citations = discussion.citations
+            confidence_score = discussion.confidence_score
 
         except Exception as e:
             print(f"Error synthesizing discussion for {feature.display_name}: {e}")

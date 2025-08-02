@@ -329,12 +329,13 @@ def run_omics_analysis(data_file, metadata, omics_type, top_n_features, max_anal
             progress_bar.progress(10)
             status_text.text("Initializing omics pipeline...")
             
-            # Create omics interpreter
+            # Create omics interpreter (using PMC by default)
             interpreter = OmicsInterpreter(
                 omics_type=omics_type,
                 use_cache=use_cache,
                 top_n_features=top_n_features,
-                max_analysis_features=max_analysis_features
+                max_analysis_features=max_analysis_features,
+                use_pmc=True
             )
             
             progress_bar.progress(20)

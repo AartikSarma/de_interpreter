@@ -3,21 +3,21 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
-This is a Multi-Omics Interpretation Pipeline that transforms differential omics results into literature-backed, disease-contextualized discussions. The pipeline supports transcriptomics, proteomics, metabolomics, genomics, metagenomics, epigenomics, and lipidomics data. It uses the Claude API for synthesis and FutureHouse Paper Search API for literature mining.
+This is a Multi-Omics Interpretation Pipeline that transforms differential omics results into literature-backed, disease-contextualized discussions. The pipeline supports transcriptomics, proteomics, metabolomics, genomics, metagenomics, epigenomics, and lipidomics data. It uses the Claude API for synthesis and PMC (PubMed Central) for literature mining with full-text access.
 
 ## Core Architecture
 
 ### Key Components
 1. **Input Processing**: Parses DE results (CSV/TSV) and experimental metadata
 2. **Gene Prioritization**: Filters and ranks genes by statistical and biological importance
-3. **Literature Mining**: Uses FutureHouse API to find relevant research papers
+3. **Literature Mining**: Uses PMC (PubMed Central) to retrieve full-text research papers
 4. **Synthesis Engine**: Uses Claude API to generate coherent discussions
 5. **Report Generator**: Produces structured, referenced output documents
 
 ### Main Modules
 - `src/parsers/`: Input parsing for DE results and metadata
 - `src/prioritization/`: Gene ranking and clustering algorithms
-- `src/literature/`: FutureHouse API integration and paper processing
+- `src/literature/`: PMC integration and paper processing with full-text extraction
 - `src/synthesis/`: Claude API integration and prompt engineering
 - `src/reporting/`: Output generation and formatting
 
@@ -46,7 +46,8 @@ python -m de_interpreter.main \
   --output report.md \
   --top-n 100 \               # Prioritize top 100 genes
   --max-analysis 25 \         # Analyze top 25 genes in detail
-  --no-cache                  # Disable literature caching
+  --no-cache \                # Disable literature caching
+  --use-futurehouse           # Use FutureHouse API instead of PMC
 ```
 
 ## Development Commands
@@ -82,12 +83,18 @@ python -m de_interpreter.main --de-file results.csv --metadata metadata.json --o
 Create a `.env` file (not tracked in git):
 ```
 ANTHROPIC_API_KEY=your_claude_api_key
-FUTUREHOUSE_API_KEY=your_futurehouse_api_key
+FUTUREHOUSE_API_KEY=your_futurehouse_api_key  # Optional - PMC is used by default
 ```
 
+### Literature Sources
+- **PMC (Default)**: Free access to PubMed Central full-text papers, no API key required
+- **FutureHouse API (Optional)**: Commercial API with rate limits, requires API key
+- Use `--use-futurehouse` flag or `use_pmc=False` parameter to switch to FutureHouse
+
 ### API Usage Guidelines
-- **FutureHouse API**: Batch gene queries, implement caching, respect rate limits
-- **Claude API**: Use structured prompts, prefer claude-3-opus for complex synthesis
+- **PMC**: Free, full-text access, automatic XML parsing, respectful rate limiting
+- **FutureHouse API**: Batch gene queries, implement caching, respect rate limits  
+- **Claude API**: Use structured prompts, prefer claude-sonnet-4 for complex synthesis
 
 ## Key Design Patterns
 
