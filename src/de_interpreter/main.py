@@ -1,0 +1,245 @@
+"""Main orchestrator for DE interpretation pipeline."""
+
+import asyncio
+import argparse
+from pathlib import Path
+from typing import Dict, List, Optional
+import sys
+from dotenv import load_dotenv
+
+from .parsers import DEParser, MetadataParser
+from .prioritization import GenePrioritizer, GeneClusterer
+from .literature import FutureHouseClient, LiteratureCache
+from .synthesis import ClaudeSynthesizer
+from .reporting import ReportGenerator
+
+
+class DEInterpreter:
+    """Main orchestrator for the DE interpretation pipeline."""
+
+    def __init__(
+        self,
+        use_cache: bool = True,
+        top_n_genes: int = 50,
+        n_clusters: Optional[int] = None,
+    ):
+        self.use_cache = use_cache
+        self.top_n_genes = top_n_genes
+        self.n_clusters = n_clusters
+
+        # Initialize components
+        self.de_parser = DEParser()
+        self.metadata_parser = MetadataParser()
+        self.prioritizer = GenePrioritizer(top_n=top_n_genes)
+        self.clusterer = GeneClusterer(n_clusters=n_clusters)
+        self.cache = LiteratureCache() if use_cache else None
+        self.report_generator = ReportGenerator()
+
+    async def run(
+        self,
+        de_file: Path,
+        metadata_file: Path,
+        output_name: str = "de_analysis_report",
+    ) -> Path:
+        """Run the complete analysis pipeline."""
+        print("Starting DE interpretation pipeline...")
+
+        # Step 1: Parse inputs
+        print("\n1. Parsing input files...")
+        de_results = self.de_parser.parse(de_file)
+        context = self.metadata_parser.parse(metadata_file)
+        de_summary = self.de_parser.summary_stats()
+
+        print(f"   - Loaded {len(de_results)} genes")
+        print(f"   - Context: {context.get_context_string()}")
+
+        # Step 2: Prioritize genes
+        print("\n2. Prioritizing genes...")
+        prioritized = self.prioritizer.prioritize(de_results, context)
+        priority_summary = self.prioritizer.get_summary_stats()
+
+        print(f"   - Selected top {len(prioritized)} genes")
+        print(f"   - Upregulated: {priority_summary['upregulated']}")
+        print(f"   - Downregulated: {priority_summary['downregulated']}")
+
+        # Step 3: Cluster genes
+        print("\n3. Clustering genes...")
+        clusters = self.clusterer.cluster_by_expression(prioritized)
+
+        print(f"   - Created {len(clusters)} clusters")
+
+        # Step 4: Literature mining
+        print("\n4. Mining literature...")
+        gene_papers = await self._fetch_literature(prioritized, context)
+
+        total_papers = sum(len(papers) for papers in gene_papers.values())
+        print(f"   - Found {total_papers} relevant papers")
+
+        # Step 5: Synthesize discussions
+        print("\n5. Synthesizing gene discussions...")
+        async with ClaudeSynthesizer() as synthesizer:
+            # Individual gene discussions
+            gene_discussions = await synthesizer.batch_synthesize(
+                prioritized[:30], context, gene_papers  # Limit to top 30 for API costs
+            )
+
+            print(f"   - Generated {len(gene_discussions)} gene discussions")
+
+            # Cluster discussions
+            cluster_discussions = {}
+            for cluster in clusters[:5]:  # Limit to 5 clusters
+                discussion = await synthesizer.synthesize_cluster_discussion(
+                    cluster, context, gene_papers
+                )
+                cluster_discussions[cluster.cluster_id] = discussion
+
+            print(f"   - Generated {len(cluster_discussions)} cluster discussions")
+
+            # Executive summary
+            print("\n6. Generating executive summary...")
+            executive_summary = await synthesizer.generate_executive_summary(
+                gene_discussions, context, de_summary
+            )
+
+        # Step 6: Generate report
+        print("\n7. Generating final report...")
+        report_path = self.report_generator.generate_report(
+            executive_summary=executive_summary,
+            gene_discussions=gene_discussions,
+            cluster_discussions=cluster_discussions,
+            context=context,
+            de_summary=de_summary,
+            clusters=clusters,
+            output_name=output_name,
+        )
+
+        print(f"\n✅ Analysis complete! Report saved to: {report_path}")
+
+        return report_path
+
+    async def _fetch_literature(
+        self, prioritized_genes: List["PrioritizedGene"], context: "ExperimentalContext"
+    ) -> Dict[str, List["Paper"]]:
+        """Fetch literature for prioritized genes."""
+        gene_papers = {}
+
+        async with FutureHouseClient() as client:
+            # Prepare queries
+            queries = []
+            gene_keys = []
+
+            for gene in prioritized_genes[: self.top_n_genes]:
+                gene_key = gene.gene_symbol or gene.gene_id
+                gene_keys.append(gene_key)
+
+                # Check cache first
+                if self.cache:
+                    query = f"{gene_key} {context.disease}"
+                    cached = self.cache.get(query)
+                    if cached:
+                        gene_papers[gene_key] = cached.papers
+                        continue
+
+                queries.append(gene_key)
+
+            # Batch fetch uncached genes
+            if queries:
+                print(f"   - Fetching literature for {len(queries)} genes...")
+
+                # Create search queries
+                search_queries = [f"{gene} {context.disease}" for gene in queries]
+
+                # Batch search
+                results = await client.batch_search(search_queries, limit_per_query=10)
+
+                # Process results
+                for gene_key, result in zip(queries, results):
+                    gene_papers[gene_key] = result.papers
+
+                    # Cache results
+                    if self.cache:
+                        self.cache.set(result)
+
+        return gene_papers
+
+
+def main():
+    """Command-line interface."""
+    parser = argparse.ArgumentParser(
+        description="Interpret differential expression results with literature context"
+    )
+
+    parser.add_argument(
+        "--de-file",
+        type=Path,
+        required=True,
+        help="Path to differential expression results (CSV/TSV/Excel)",
+    )
+
+    parser.add_argument(
+        "--metadata",
+        type=Path,
+        required=True,
+        help="Path to experimental metadata (JSON/YAML)",
+    )
+
+    parser.add_argument(
+        "--output",
+        type=str,
+        default="de_analysis_report",
+        help="Output report name (without extension)",
+    )
+
+    parser.add_argument(
+        "--top-n",
+        type=int,
+        default=50,
+        help="Number of top genes to analyze (default: 50)",
+    )
+
+    parser.add_argument(
+        "--n-clusters",
+        type=int,
+        default=None,
+        help="Number of gene clusters (default: auto)",
+    )
+
+    parser.add_argument(
+        "--no-cache", action="store_true", help="Disable literature caching"
+    )
+
+    args = parser.parse_args()
+
+    # Validate inputs
+    if not args.de_file.exists():
+        print(f"Error: DE file not found: {args.de_file}")
+        sys.exit(1)
+
+    if not args.metadata.exists():
+        print(f"Error: Metadata file not found: {args.metadata}")
+        sys.exit(1)
+
+    # Load environment variables
+    load_dotenv()
+
+    # Create interpreter
+    interpreter = DEInterpreter(
+        use_cache=not args.no_cache, top_n_genes=args.top_n, n_clusters=args.n_clusters
+    )
+
+    # Run analysis
+    try:
+        report_path = asyncio.run(
+            interpreter.run(
+                de_file=args.de_file,
+                metadata_file=args.metadata,
+                output_name=args.output,
+            )
+        )
+    except Exception as e:
+        print(f"\nError during analysis: {e}")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

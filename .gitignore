@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Project specific
+.env
+*.log
+cache/
+output/
+temp/
+
+# Keep example data files but exclude real data
+# *.csv
+# *.tsv 
+# *.xlsx
+results/
+data/
+# Keep examples/ directory for sample data
+
+# OS
+.DS_Store
+Thumbs.db
