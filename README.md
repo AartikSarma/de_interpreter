@@ -133,6 +133,33 @@ python -m de_interpreter.main \
 
 ## Development
 
+### Directory Structure
+
+- `src/de_interpreter/` - Main package source code
+- `scripts/` - Standalone utility scripts
+  - `gene_query_similarity_scorer.py` - Gene-query literature similarity scoring
+  - `minimal_gene_scorer.py` - Lightweight version with fewer dependencies
+  - `example_gene_query_scoring.py` - Integration examples with existing components
+- `docs/` - Additional documentation
+  - `GENE_QUERY_SCORING_GUIDE.md` - Comprehensive scoring implementation guide
+- `tests/` - Test suite
+- `covid_data/` - Example COVID-19 differential expression data
+
+### Gene-Query Similarity Scoring
+
+New utility for scoring gene lists against literature queries:
+
+```bash
+# Score genes against a query using PubMed literature
+python scripts/gene_query_similarity_scorer.py \
+    --genes TP53 BRCA1 MYC \
+    --query "cancer progression" \
+    --top-papers 20 \
+    --output results.json
+```
+
+See `scripts/README.md` for detailed usage examples.
+
 ```bash
 # Run tests
 pytest tests/
