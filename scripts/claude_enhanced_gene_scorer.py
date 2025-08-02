@@ -164,8 +164,8 @@ class ClaudeEnhancedPubMedScorer:
     
     def search_gene_query(self, gene: str, expanded_query: str, max_results: int = 10) -> List[str]:
         """Search PubMed for gene + expanded query, return PMIDs"""
-        search_term = f"{gene} AND {expanded_query}"
-        
+        search_term = f"{gene} AND ({expanded_query})"
+        print(f"🔍 Searching: '{search_term}'")
         params = {
             'db': 'pubmed',
             'term': search_term,
