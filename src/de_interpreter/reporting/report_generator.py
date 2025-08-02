@@ -6,8 +6,10 @@ from datetime import datetime
 import json
 
 from ..synthesis import GeneDiscussion
-from ..prioritization import GeneCluster
+from ..prioritization import PrioritizedGene
+from ..prioritization.omics_prioritizer import PrioritizedOmicsFeature
 from ..parsers import ExperimentalContext
+from ..parsers.omics_data import OmicsExperimentContext
 from .markdown_formatter import MarkdownFormatter
 
 
@@ -23,10 +25,9 @@ class ReportGenerator:
         self,
         executive_summary: str,
         gene_discussions: List[GeneDiscussion],
-        cluster_discussions: Dict[int, str],
         context: ExperimentalContext,
         de_summary: Dict[str, Any],
-        clusters: Optional[List[GeneCluster]] = None,
+        analysis_genes: Optional[List[PrioritizedGene]] = None,
         output_name: str = "de_analysis_report",
     ) -> Path:
         """Generate comprehensive markdown report."""
@@ -54,11 +55,9 @@ class ReportGenerator:
         if gene_discussions:
             sections.append(self._generate_gene_discussions(gene_discussions))
 
-        # Cluster analyses
-        if clusters and cluster_discussions:
-            sections.append(
-                self._generate_cluster_analyses(clusters, cluster_discussions)
-            )
+        # Gene summary table
+        if analysis_genes:
+            sections.append(self._generate_gene_summary_table(analysis_genes))
 
         # Methods
         sections.append(self._generate_methods())
@@ -100,7 +99,7 @@ class ReportGenerator:
 1. [Executive Summary](#executive-summary)
 2. [Analysis Overview](#analysis-overview)
 3. [Gene-by-Gene Analysis](#gene-by-gene-analysis)
-4. [Functional Cluster Analysis](#functional-cluster-analysis)
+4. [Gene Summary Table](#gene-summary-table)
 5. [Methods](#methods)
 6. [References](#references)
 
@@ -208,23 +207,23 @@ class ReportGenerator:
                 summary += f" Key finding: {discussion.key_findings[0]}"
             return summary + "\n"
 
-    def _generate_cluster_analyses(
-        self, clusters: List[GeneCluster], discussions: Dict[int, str]
-    ) -> str:
-        """Generate cluster analysis section."""
-        content = ["## Functional Cluster Analysis\n"]
-
-        for cluster in clusters:
-            if cluster.cluster_id in discussions:
-                content.append(
-                    f"### Cluster {cluster.cluster_id + 1}: {cluster.predominant_direction.title()}regulated Genes\n"
-                )
-                content.append(
-                    f"**Size**: {cluster.size} genes | **Mean log2FC**: {cluster.mean_log2fc:.2f}\n"
-                )
-                content.append(discussions[cluster.cluster_id])
-                content.append("\n---\n")
-
+    def _generate_gene_summary_table(self, analysis_genes: List[PrioritizedGene]) -> str:
+        """Generate gene summary table section."""
+        content = ["## Gene Summary Table\n"]
+        content.append("| Gene Symbol | Gene ID | log2FC | Adj P-value | Combined Score | Direction |")
+        content.append("|-------------|---------|--------|-------------|----------------|-----------|")
+        
+        for gene in analysis_genes:
+            symbol = gene.gene_symbol or "N/A"
+            gene_id = gene.gene_id
+            log2fc = f"{gene.de_result.log2_fold_change:.2f}"
+            padj = f"{gene.de_result.padj:.2e}"
+            score = f"{gene.combined_score:.2f}"
+            direction = "↑" if gene.de_result.is_upregulated else "↓"
+            
+            content.append(f"| {symbol} | {gene_id} | {log2fc} | {padj} | {score} | {direction} |")
+        
+        content.append("\n")
         return "\n".join(content)
 
     def _generate_methods(self) -> str:
@@ -285,6 +284,249 @@ Genes were clustered based on expression patterns using hierarchical clustering 
             },
             "summary_stats": de_summary,
             "n_gene_discussions": n_discussions,
+        }
+
+        metadata_path = self.output_dir / f"{output_name}_metadata.json"
+        with open(metadata_path, "w") as f:
+            json.dump(metadata, f, indent=2)
+
+    def generate_omics_report(
+        self,
+        executive_summary: str,
+        feature_discussions: List[GeneDiscussion],
+        context: OmicsExperimentContext,
+        feature_summary: Dict[str, Any],
+        omics_summary: Dict[str, Any],
+        analysis_features: Optional[List[PrioritizedOmicsFeature]] = None,
+        output_name: str = "omics_analysis_report",
+    ) -> Path:
+        """Generate comprehensive omics analysis report."""
+
+        # Build report sections
+        sections = []
+
+        # Title and metadata
+        sections.append(self._generate_omics_header(context))
+
+        # Table of contents
+        sections.append(self._generate_omics_toc())
+
+        # Executive summary
+        sections.append(
+            self.formatter.format_section(
+                "Executive Summary", executive_summary, level=1
+            )
+        )
+
+        # Analysis overview
+        sections.append(self._generate_omics_overview(feature_summary, omics_summary, context))
+
+        # Feature-by-feature discussions
+        if feature_discussions:
+            sections.append(self._generate_omics_feature_discussions(feature_discussions, context))
+
+        # Feature summary table
+        if analysis_features:
+            sections.append(self._generate_omics_feature_summary_table(analysis_features, context))
+
+        # Methods
+        sections.append(self._generate_omics_methods(context))
+
+        # References
+        sections.append(self._generate_references(feature_discussions))
+
+        # Combine all sections
+        full_report = "\n\n".join(sections)
+
+        # Save report
+        output_path = self.output_dir / f"{output_name}.md"
+        with open(output_path, "w") as f:
+            f.write(full_report)
+
+        # Also save JSON metadata
+        self._save_omics_metadata(output_name, context, feature_summary, omics_summary, len(feature_discussions))
+
+        return output_path
+
+    def _generate_omics_header(self, context: OmicsExperimentContext) -> str:
+        """Generate omics report header."""
+        date = datetime.now().strftime("%Y-%m-%d")
+
+        header = f"""# {context.omics_type.value.title()} Analysis Report
+
+**Generated**: {date}  
+**Analysis**: {context.get_context_string()}  
+**Organism**: {context.organism.title()}
+**Omics Type**: {context.omics_type.value.title()}
+
+---
+"""
+        return header
+
+    def _generate_omics_toc(self) -> str:
+        """Generate omics table of contents."""
+        return """## Table of Contents
+
+1. [Executive Summary](#executive-summary)
+2. [Analysis Overview](#analysis-overview)
+3. [Feature-by-Feature Analysis](#feature-by-feature-analysis)
+4. [Feature Summary Table](#feature-summary-table)
+5. [Methods](#methods)
+6. [References](#references)
+
+---
+"""
+
+    def _generate_omics_overview(
+        self, 
+        feature_summary: Dict[str, Any], 
+        omics_summary: Dict[str, Any],
+        context: OmicsExperimentContext
+    ) -> str:
+        """Generate omics analysis overview."""
+        feature_type = omics_summary.get('feature_type_name', 'features')
+        
+        content = f"""## Analysis Overview
+
+### Dataset Summary
+- **Omics Type**: {context.omics_type.value.title()}
+- **Total {feature_type}**: {feature_summary.get('total_features', 'N/A'):,}
+- **Significant {feature_type}**: {feature_summary.get('significant_features', 'N/A'):,}
+- **Analysis Platform**: {context.platform or 'Not specified'}
+- **Analysis Method**: {context.analysis_method or 'Standard differential analysis'}
+
+### Statistical Overview
+- **Upregulated {feature_type}**: {omics_summary.get('upregulated', 'N/A')}
+- **Downregulated {feature_type}**: {omics_summary.get('downregulated', 'N/A')}
+- **Mean log2 fold change**: {omics_summary.get('mean_log2fc', 'N/A'):.2f}
+- **Maximum |log2FC|**: {omics_summary.get('max_abs_log2fc', 'N/A'):.2f}
+- **Minimum adjusted p-value**: {omics_summary.get('min_padj', 'N/A'):.2e}
+
+### Experimental Design
+- **Condition**: {context.treatment} vs {context.control}
+- **Tissue/Sample**: {context.tissue}
+- **Cell Type**: {context.cell_type}
+- **Organism**: {context.organism}
+"""
+        
+        if context.sample_size:
+            content += f"- **Sample Size**: {context.sample_size.get('treatment', 'N/A')} treatment, {context.sample_size.get('control', 'N/A')} control\n"
+        
+        if context.time_point:
+            content += f"- **Time Point**: {context.time_point}\n"
+
+        return content
+
+    def _generate_omics_feature_discussions(
+        self, 
+        discussions: List[GeneDiscussion], 
+        context: OmicsExperimentContext
+    ) -> str:
+        """Generate feature-by-feature discussions for omics."""
+        feature_type = context.get_feature_type_name()
+        content = [f"## {feature_type.title()}-by-{feature_type.title()} Analysis\n"]
+
+        for i, discussion in enumerate(discussions, 1):
+            feature_name = discussion.gene_symbol or discussion.gene_id
+            content.append(f"### {i}. {feature_name}\n")
+            content.append(discussion.discussion_text)
+            
+            if discussion.key_findings:
+                content.append("\n**Key Findings:**")
+                for finding in discussion.key_findings:
+                    content.append(f"- {finding}")
+            
+            if discussion.therapeutic_implications:
+                content.append(f"\n**Therapeutic Implications:** {discussion.therapeutic_implications}")
+            
+            content.append("\n---\n")
+
+        return "\n".join(content)
+
+    def _generate_omics_feature_summary_table(
+        self, 
+        analysis_features: List[PrioritizedOmicsFeature], 
+        context: OmicsExperimentContext
+    ) -> str:
+        """Generate omics feature summary table."""
+        feature_type = context.get_feature_type_name().title()
+        content = [f"## {feature_type} Summary Table\n"]
+        content.append(f"| {feature_type} Name | {feature_type} ID | log2FC | Adj P-value | Combined Score | Direction |")
+        content.append("|-------------|---------|--------|-------------|----------------|-----------|")
+        
+        for feature in analysis_features:
+            name = feature.display_name
+            feature_id = feature.feature_id
+            log2fc = f"{feature.omics_feature.log2_fold_change:.2f}"
+            padj = f"{feature.omics_feature.padj:.2e}"
+            score = f"{feature.combined_score:.2f}"
+            direction = "↑" if feature.omics_feature.is_upregulated else "↓"
+            
+            content.append(f"| {name} | {feature_id} | {log2fc} | {padj} | {score} | {direction} |")
+        
+        content.append("\n")
+        return "\n".join(content)
+
+    def _generate_omics_methods(self, context: OmicsExperimentContext) -> str:
+        """Generate omics methods section."""
+        feature_type = context.get_feature_type_name()
+        
+        return f"""## Methods
+
+### Data Processing
+- **Omics Type**: {context.omics_type.value.title()}
+- **Platform**: {context.platform or 'Not specified'}
+- **Analysis Pipeline**: {context.analysis_method or 'Standard differential analysis'}
+- **Normalization**: {context.normalization or 'Standard normalization'}
+
+### Statistical Analysis
+- **Differential Analysis**: Statistical testing for {feature_type} abundance changes
+- **Multiple Testing Correction**: Benjamini-Hochberg FDR correction
+- **Significance Threshold**: Adjusted p-value < 0.05
+- **Effect Size Threshold**: |log2 fold change| > 1.0
+
+### Feature Prioritization
+- **Statistical Score**: Based on adjusted p-value and effect size
+- **Biological Score**: Based on known disease associations and functional annotations
+- **Combined Score**: Weighted combination of statistical and biological scores
+
+### Literature Mining
+- **Database**: FutureHouse scientific literature database
+- **Search Strategy**: {feature_type.title()}-specific queries combined with disease context
+- **Synthesis**: AI-powered interpretation using Claude-4 language model
+
+### Report Generation
+- **Analysis Date**: {datetime.now().strftime("%Y-%m-%d")}
+- **Software**: DE Interpretation Pipeline (Multi-omics version)
+"""
+
+    def _save_omics_metadata(
+        self,
+        output_name: str,
+        context: OmicsExperimentContext,
+        feature_summary: Dict[str, Any],
+        omics_summary: Dict[str, Any],
+        n_discussions: int,
+    ) -> None:
+        """Save omics analysis metadata as JSON."""
+        metadata = {
+            "analysis_date": datetime.now().isoformat(),
+            "output_name": output_name,
+            "omics_type": context.omics_type.value,
+            "context": {
+                "disease": context.disease,
+                "tissue": context.tissue,
+                "cell_type": context.cell_type,
+                "treatment": context.treatment,
+                "control": context.control,
+                "organism": context.organism,
+                "platform": context.platform,
+                "analysis_method": context.analysis_method,
+                "normalization": context.normalization,
+            },
+            "feature_summary": feature_summary,
+            "omics_summary": omics_summary,
+            "n_feature_discussions": n_discussions,
         }
 
         metadata_path = self.output_dir / f"{output_name}_metadata.json"

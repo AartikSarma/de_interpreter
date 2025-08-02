@@ -3,7 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
-This is a Differential Expression (DE) Interpretation Agent that transforms gene expression results into literature-backed, disease-contextualized discussions. The agent uses the Claude API for synthesis and FutureHouse Paper Search API for literature mining.
+This is a Multi-Omics Interpretation Pipeline that transforms differential omics results into literature-backed, disease-contextualized discussions. The pipeline supports transcriptomics, proteomics, metabolomics, genomics, metagenomics, epigenomics, and lipidomics data. It uses the Claude API for synthesis and FutureHouse Paper Search API for literature mining.
 
 ## Core Architecture
 
@@ -20,6 +20,34 @@ This is a Differential Expression (DE) Interpretation Agent that transforms gene
 - `src/literature/`: FutureHouse API integration and paper processing
 - `src/synthesis/`: Claude API integration and prompt engineering
 - `src/reporting/`: Output generation and formatting
+
+## Usage Options
+
+### Web Interface (Recommended)
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Run Streamlit web interface
+python run_streamlit.py
+# OR
+streamlit run streamlit_app.py
+```
+
+### Command Line Interface
+```bash
+# Run the agent directly
+python -m de_interpreter.main --de-file results.csv --metadata metadata.json --output report.md
+
+# Advanced options
+python -m de_interpreter.main \
+  --de-file results.csv \
+  --metadata metadata.json \
+  --output report.md \
+  --top-n 100 \               # Prioritize top 100 genes
+  --max-analysis 25 \         # Analyze top 25 genes in detail
+  --no-cache                  # Disable literature caching
+```
 
 ## Development Commands
 
