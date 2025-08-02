@@ -21,6 +21,25 @@ This is a Differential Expression (DE) Interpretation Agent that transforms gene
 - `src/synthesis/`: Claude API integration and prompt engineering
 - `src/reporting/`: Output generation and formatting
 
+## Usage Options
+
+### Web Interface (Recommended)
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Run Streamlit web interface
+python run_streamlit.py
+# OR
+streamlit run streamlit_app.py
+```
+
+### Command Line Interface
+```bash
+# Run the agent directly
+python -m de_interpreter.main --de-file results.csv --metadata metadata.json --output report.md
+```
+
 ## Development Commands
 
 ```bash
