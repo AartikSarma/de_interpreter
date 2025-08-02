@@ -8,7 +8,7 @@ import sys
 from dotenv import load_dotenv
 
 from .parsers import DEParser, MetadataParser
-from .prioritization import GenePrioritizer, GeneClusterer
+from .prioritization import GenePrioritizer
 from .literature import FutureHouseClient, LiteratureCache
 from .synthesis import ClaudeSynthesizer
 from .reporting import ReportGenerator
@@ -21,17 +21,17 @@ class DEInterpreter:
         self,
         use_cache: bool = True,
         top_n_genes: int = 50,
-        n_clusters: Optional[int] = None,
+        max_analysis_genes: Optional[int] = None,
     ):
         self.use_cache = use_cache
         self.top_n_genes = top_n_genes
-        self.n_clusters = n_clusters
+        # Default to top_n_genes for analysis, but allow override
+        self.max_analysis_genes = max_analysis_genes or min(top_n_genes, 30)
 
         # Initialize components
         self.de_parser = DEParser()
         self.metadata_parser = MetadataParser()
         self.prioritizer = GenePrioritizer(top_n=top_n_genes)
-        self.clusterer = GeneClusterer(n_clusters=n_clusters)
         self.cache = LiteratureCache() if use_cache else None
         self.report_generator = ReportGenerator()
 
@@ -62,15 +62,15 @@ class DEInterpreter:
         print(f"   - Upregulated: {priority_summary['upregulated']}")
         print(f"   - Downregulated: {priority_summary['downregulated']}")
 
-        # Step 3: Cluster genes
-        print("\n3. Clustering genes...")
-        clusters = self.clusterer.cluster_by_expression(prioritized)
-
-        print(f"   - Created {len(clusters)} clusters")
+        # Step 3: Select top genes for analysis
+        print(f"\n3. Selecting top {self.max_analysis_genes} genes for detailed analysis...")
+        analysis_genes = prioritized[:self.max_analysis_genes]
+        
+        print(f"   - Selected {len(analysis_genes)} genes for literature mining and synthesis")
 
         # Step 4: Literature mining
         print("\n4. Mining literature...")
-        gene_papers = await self._fetch_literature(prioritized, context)
+        gene_papers = await self._fetch_literature(analysis_genes, context)
 
         total_papers = sum(len(papers) for papers in gene_papers.values())
         print(f"   - Found {total_papers} relevant papers")
@@ -78,22 +78,12 @@ class DEInterpreter:
         # Step 5: Synthesize discussions
         print("\n5. Synthesizing gene discussions...")
         async with ClaudeSynthesizer() as synthesizer:
-            # Individual gene discussions
+            # Individual gene discussions for selected genes
             gene_discussions = await synthesizer.batch_synthesize(
-                prioritized[:30], context, gene_papers  # Limit to top 30 for API costs
+                analysis_genes, context, gene_papers
             )
 
             print(f"   - Generated {len(gene_discussions)} gene discussions")
-
-            # Cluster discussions
-            cluster_discussions = {}
-            for cluster in clusters[:5]:  # Limit to 5 clusters
-                discussion = await synthesizer.synthesize_cluster_discussion(
-                    cluster, context, gene_papers
-                )
-                cluster_discussions[cluster.cluster_id] = discussion
-
-            print(f"   - Generated {len(cluster_discussions)} cluster discussions")
 
             # Executive summary
             print("\n6. Generating executive summary...")
@@ -106,10 +96,9 @@ class DEInterpreter:
         report_path = self.report_generator.generate_report(
             executive_summary=executive_summary,
             gene_discussions=gene_discussions,
-            cluster_discussions=cluster_discussions,
             context=context,
             de_summary=de_summary,
-            clusters=clusters,
+            analysis_genes=analysis_genes,
             output_name=output_name,
         )
 
@@ -194,14 +183,14 @@ def main():
         "--top-n",
         type=int,
         default=50,
-        help="Number of top genes to analyze (default: 50)",
+        help="Number of top genes to prioritize (default: 50)",
     )
 
     parser.add_argument(
-        "--n-clusters",
+        "--max-analysis",
         type=int,
         default=None,
-        help="Number of gene clusters (default: auto)",
+        help="Maximum number of genes for detailed analysis (default: min(top_n, 30))",
     )
 
     parser.add_argument(
@@ -224,7 +213,9 @@ def main():
 
     # Create interpreter
     interpreter = DEInterpreter(
-        use_cache=not args.no_cache, top_n_genes=args.top_n, n_clusters=args.n_clusters
+        use_cache=not args.no_cache, 
+        top_n_genes=args.top_n, 
+        max_analysis_genes=args.max_analysis
     )
 
     # Run analysis

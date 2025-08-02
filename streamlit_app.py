@@ -17,8 +17,12 @@ load_dotenv()
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
+# Import both traditional and omics pipelines
 from de_interpreter.main import DEInterpreter
+from de_interpreter.omics_main import OmicsInterpreter
 from de_interpreter.parsers import DEParser, MetadataParser
+from de_interpreter.parsers.omics_data import OmicsType
+from de_interpreter.parsers.omics_parser import OmicsParser, OmicsMetadataParser
 
 
 def main():
@@ -30,10 +34,13 @@ def main():
         initial_sidebar_state="expanded"
     )
     
-    st.title("🧬 Differential Expression Interpretation Pipeline")
+    st.title("🧬 Multi-Omics Interpretation Pipeline")
     st.markdown("""
-    Transform your differential expression results into literature-backed, 
+    Transform your differential omics results into literature-backed, 
     disease-contextualized discussions using AI-powered analysis.
+    
+    **Supported Omics Types**: Transcriptomics, Proteomics, Metabolomics, 
+    Genomics, Metagenomics, Epigenomics, Lipidomics
     """)
     
     # Sidebar for configuration
@@ -59,24 +66,67 @@ def main():
         
         st.divider()
         
+        # Omics Type Selection
+        st.subheader("🔬 Omics Type")
+        omics_type_options = {
+            "Transcriptomics (Gene Expression)": OmicsType.TRANSCRIPTOMICS,
+            "Proteomics (Protein Abundance)": OmicsType.PROTEOMICS,
+            "Metabolomics (Metabolite Levels)": OmicsType.METABOLOMICS,
+            "Genomics (Genetic Variants)": OmicsType.GENOMICS,
+            "Metagenomics (Microbial Communities)": OmicsType.METAGENOMICS,
+            "Epigenomics (Chromatin Modifications)": OmicsType.EPIGENOMICS,
+            "Lipidomics (Lipid Composition)": OmicsType.LIPIDOMICS,
+        }
+        
+        selected_omics_display = st.selectbox(
+            "Select your omics data type:",
+            options=list(omics_type_options.keys()),
+            index=0,
+            help="Choose the type of omics data you're analyzing"
+        )
+        selected_omics_type = omics_type_options[selected_omics_display]
+        
+        # Display omics-specific info
+        feature_names = {
+            OmicsType.TRANSCRIPTOMICS: "genes",
+            OmicsType.PROTEOMICS: "proteins",
+            OmicsType.METABOLOMICS: "metabolites", 
+            OmicsType.GENOMICS: "variants",
+            OmicsType.METAGENOMICS: "microbes",
+            OmicsType.EPIGENOMICS: "genomic regions",
+            OmicsType.LIPIDOMICS: "lipids"
+        }
+        feature_name = feature_names[selected_omics_type]
+        
+        st.info(f"📊 Analyzing **{feature_name}** with {selected_omics_type.value}-specific methods")
+        
+        st.divider()
+        
         # Pipeline Parameters
         st.subheader("Pipeline Parameters")
-        top_n_genes = st.slider("Top N genes to analyze", 5, 100, 25)
-        n_clusters = st.selectbox(
-            "Number of gene clusters", 
-            options=["Auto"] + list(range(2, 11)),
-            index=0
-        )
+        top_n_features = st.slider(f"Top N {feature_name} to prioritize", 10, 200, 50, 
+                                   help=f"Number of {feature_name} to prioritize from results")
+        max_analysis_features = st.slider(f"Max {feature_name} for detailed analysis", 5, 50, 20,
+                                         help=f"Number of top {feature_name} for literature mining and synthesis")
         use_cache = st.checkbox("Use literature cache", value=True)
         
         st.divider()
         
         # Example Data
         st.subheader("📁 Example Data")
-        if st.button("Load Parkinson's Example"):
-            st.session_state.load_example = "parkinson"
-        if st.button("Load COVID-19 Example"):
-            st.session_state.load_example = "covid"
+        st.write("**Transcriptomics Examples:**")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🧠 Parkinson's Disease", help="Gene expression in dopaminergic neurons"):
+                st.session_state.load_example = "parkinson"
+                st.session_state.example_omics_type = OmicsType.TRANSCRIPTOMICS
+        with col2:
+            if st.button("🦠 COVID-19 ARDS", help="Gene expression in respiratory samples"):
+                st.session_state.load_example = "covid"
+                st.session_state.example_omics_type = OmicsType.TRANSCRIPTOMICS
+        
+        st.write("**Other Omics Examples:**")
+        st.info("💡 Upload your own data files for proteomics, metabolomics, and other omics types!")
     
     # Main content area
     col1, col2 = st.columns([1, 1])
@@ -85,29 +135,41 @@ def main():
         st.header("📤 Input Data")
         
         # File uploaders
-        st.subheader("1. Upload DE Results")
-        de_file = st.file_uploader(
-            "Differential Expression Results",
+        st.subheader(f"1. Upload {selected_omics_type.value.title()} Results")
+        
+        # Omics-specific help text
+        help_text = {
+            OmicsType.TRANSCRIPTOMICS: "CSV/TSV with: gene_id, gene_symbol, log2FoldChange, pvalue, padj",
+            OmicsType.PROTEOMICS: "CSV/TSV with: protein_id, protein_symbol, log2FoldChange, pvalue, padj",
+            OmicsType.METABOLOMICS: "CSV/TSV with: metabolite_id, metabolite_name, log2FoldChange, pvalue, padj",
+            OmicsType.GENOMICS: "CSV/TSV with: variant_id, gene_symbol, log2FoldChange, pvalue, padj",
+            OmicsType.METAGENOMICS: "CSV/TSV with: species/otu_id, species_name, log2FoldChange, pvalue, padj",
+            OmicsType.EPIGENOMICS: "CSV/TSV with: region_id, gene_symbol, log2FoldChange, pvalue, padj",
+            OmicsType.LIPIDOMICS: "CSV/TSV with: lipid_id, lipid_name, log2FoldChange, pvalue, padj"
+        }
+        
+        data_file = st.file_uploader(
+            f"Differential {selected_omics_type.value.title()} Results",
             type=["csv", "tsv", "xlsx"],
-            help="CSV/TSV file with columns: gene_id, gene_symbol, log2FoldChange, pvalue, padj"
+            help=help_text[selected_omics_type]
         )
         
-        if de_file:
+        if data_file:
             try:
                 # Preview the uploaded file
-                if de_file.name.endswith('.csv'):
-                    df = pd.read_csv(de_file)
-                elif de_file.name.endswith('.tsv'):
-                    df = pd.read_csv(de_file, sep='\t')
+                if data_file.name.endswith('.csv'):
+                    df = pd.read_csv(data_file)
+                elif data_file.name.endswith('.tsv'):
+                    df = pd.read_csv(data_file, sep='\t')
                 else:
-                    df = pd.read_excel(de_file)
+                    df = pd.read_excel(data_file)
                 
                 st.write("**File Preview:**")
                 st.dataframe(df.head(), use_container_width=True)
-                st.info(f"Loaded {len(df)} genes")
+                st.info(f"Loaded {len(df)} {feature_name}")
                 
                 # Reset file pointer for later use
-                de_file.seek(0)
+                data_file.seek(0)
                 
             except Exception as e:
                 st.error(f"Error reading file: {e}")
@@ -140,22 +202,36 @@ def main():
         else:
             # Manual metadata entry
             with st.form("metadata_form"):
-                disease = st.text_input("Disease/Condition", placeholder="e.g., Parkinson's disease")
-                tissue = st.text_input("Tissue/Sample Type", placeholder="e.g., substantia nigra")
-                cell_type = st.text_input("Cell Type", placeholder="e.g., dopaminergic neurons")
-                treatment = st.text_input("Treatment", placeholder="e.g., alpha-synuclein fibrils")
-                control = st.text_input("Control", placeholder="e.g., PBS")
+                # Basic experimental info
+                disease = st.text_input("Disease/Condition", placeholder="e.g., Type 2 Diabetes")
+                tissue = st.text_input("Tissue/Sample Type", placeholder="e.g., plasma, liver tissue")
+                cell_type = st.text_input("Cell Type", placeholder="e.g., hepatocytes, plasma")
+                treatment = st.text_input("Treatment", placeholder="e.g., high glucose diet")
+                control = st.text_input("Control", placeholder="e.g., normal diet")
                 organism = st.selectbox("Organism", ["human", "mouse", "rat", "other"])
+                
+                # Omics-specific fields
+                st.subheader("Omics-Specific Information")
+                platform = st.text_input("Platform/Instrument", 
+                                        placeholder="e.g., Orbitrap MS, RNA-seq, etc.")
+                analysis_method = st.text_input("Analysis Method", 
+                                              placeholder="e.g., MetaboAnalyst, DESeq2, etc.")
+                normalization = st.text_input("Normalization Method", 
+                                             placeholder="e.g., TMM, quantile, etc.")
                 
                 if st.form_submit_button("Create Metadata"):
                     metadata = {
+                        "omics_type": selected_omics_type.value,
                         "disease": disease,
                         "tissue": tissue,
                         "cell_type": cell_type,
                         "treatment": treatment,
                         "control": control,
                         "organism": organism,
-                        "comparison_description": f"{treatment} vs {control} in {organism} {cell_type}"
+                        "platform": platform,
+                        "analysis_method": analysis_method,
+                        "normalization": normalization,
+                        "comparison_description": f"{treatment} vs {control} in {organism} {tissue}"
                     }
                     st.success("Metadata created!")
                     st.json(metadata)
@@ -166,45 +242,65 @@ def main():
         # Handle example data loading
         if hasattr(st.session_state, 'load_example'):
             example = st.session_state.load_example
+            example_omics_type = getattr(st.session_state, 'example_omics_type', OmicsType.TRANSCRIPTOMICS)
             
             if example == "parkinson":
-                de_file_path = "examples/sample_de_results.csv"
+                data_file_path = "examples/sample_de_results.csv"
                 metadata_file_path = "examples/example_metadata.json"
-                st.info("Loaded Parkinson's disease example data")
+                st.info("🧠 Loaded Parkinson's disease transcriptomics data")
                 
             elif example == "covid":
-                de_file_path = "covid_data/covid_deg_fixed.csv"
+                data_file_path = "covid_data/covid_deg_fixed.csv"
                 metadata_file_path = "covid_data/covid_metadata.json"
-                st.info("Loaded COVID-19 ARDS example data")
+                st.info("🦠 Loaded COVID-19 ARDS transcriptomics data")
             
             # Load example files for analysis
-            if Path(de_file_path).exists() and Path(metadata_file_path).exists():
+            if Path(data_file_path).exists() and Path(metadata_file_path).exists():
                 with open(metadata_file_path) as f:
                     metadata = json.load(f)
                 
+                # Ensure omics type is set in metadata
+                if "omics_type" not in metadata:
+                    metadata["omics_type"] = example_omics_type.value
+                
                 # Show loaded data
-                df = pd.read_csv(de_file_path)
+                df = pd.read_csv(data_file_path)
                 st.write("**Loaded Data Preview:**")
                 st.dataframe(df.head(), use_container_width=True)
                 st.write("**Metadata:**")
                 st.json(metadata)
+                
+                # Store for pipeline execution
+                st.session_state.example_data_path = data_file_path
+                st.session_state.example_metadata_path = metadata_file_path
+                st.session_state.example_metadata = metadata
             
-            # Clear the session state
+            # Clear the load example flag but keep paths
             del st.session_state.load_example
         
         # Analysis button
-        can_run = (de_file is not None or hasattr(st.session_state, 'load_example')) and metadata is not None
+        has_data = (data_file is not None or hasattr(st.session_state, 'example_data_path'))
+        has_metadata = (metadata is not None or hasattr(st.session_state, 'example_metadata'))
+        can_run = has_data and has_metadata
         
         if not (anthropic_key and futurehouse_key):
             st.error("⚠️ API keys required to run analysis")
             can_run = False
         
         if st.button("🚀 Run Analysis", disabled=not can_run, type="primary"):
-            run_analysis(de_file, metadata, top_n_genes, n_clusters, use_cache)
+            run_omics_analysis(
+                data_file, 
+                metadata, 
+                selected_omics_type,
+                top_n_features, 
+                max_analysis_features, 
+                use_cache,
+                feature_name
+            )
 
 
-def run_analysis(de_file, metadata, top_n_genes, n_clusters, use_cache):
-    """Run the DE interpretation analysis."""
+def run_omics_analysis(data_file, metadata, omics_type, top_n_features, max_analysis_features, use_cache, feature_name):
+    """Run the multi-omics interpretation analysis."""
     
     # Create progress indicators
     progress_bar = st.progress(0)
@@ -215,43 +311,52 @@ def run_analysis(de_file, metadata, top_n_genes, n_clusters, use_cache):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
             
-            # Handle DE file
-            if de_file is not None:
-                de_path = temp_path / "de_results.csv"
-                with open(de_path, "wb") as f:
-                    f.write(de_file.getbuffer())
+            # Handle data file
+            if data_file is not None:
+                data_path = temp_path / f"omics_results.csv"
+                with open(data_path, "wb") as f:
+                    f.write(data_file.getbuffer())
             else:
                 # Use example data
-                if hasattr(st.session_state, 'example_de_path'):
-                    de_path = Path(st.session_state.example_de_path)
+                if hasattr(st.session_state, 'example_data_path'):
+                    data_path = Path(st.session_state.example_data_path)
                 else:
-                    st.error("No DE file available")
+                    st.error(f"No {feature_name} data file available")
                     return
             
-            # Save metadata
-            metadata_path = temp_path / "metadata.json"
-            with open(metadata_path, "w") as f:
-                json.dump(metadata, f, indent=2)
+            # Handle metadata
+            if metadata is not None:
+                metadata_path = temp_path / "metadata.json"
+                with open(metadata_path, "w") as f:
+                    json.dump(metadata, f, indent=2)
+            else:
+                # Use example metadata
+                if hasattr(st.session_state, 'example_metadata_path'):
+                    metadata_path = Path(st.session_state.example_metadata_path)
+                else:
+                    st.error("No metadata available")
+                    return
             
             progress_bar.progress(10)
-            status_text.text("Initializing pipeline...")
+            status_text.text("Initializing omics pipeline...")
             
-            # Create interpreter
-            interpreter = DEInterpreter(
+            # Create omics interpreter
+            interpreter = OmicsInterpreter(
+                omics_type=omics_type,
                 use_cache=use_cache,
-                top_n_genes=top_n_genes,
-                n_clusters=None if n_clusters == "Auto" else int(n_clusters)
+                top_n_features=top_n_features,
+                max_analysis_features=max_analysis_features
             )
             
             progress_bar.progress(20)
-            status_text.text("Running analysis...")
+            status_text.text(f"Running {omics_type.value} analysis...")
             
             # Run analysis in async context
             async def run_pipeline():
                 return await interpreter.run(
-                    de_file=de_path,
+                    data_file=data_path,
                     metadata_file=metadata_path,
-                    output_name="streamlit_analysis"
+                    output_name="streamlit_omics_analysis"
                 )
             
             # Run the pipeline
@@ -261,10 +366,10 @@ def run_analysis(de_file, metadata, top_n_genes, n_clusters, use_cache):
             try:
                 report_path = loop.run_until_complete(run_pipeline())
                 progress_bar.progress(100)
-                status_text.text("Analysis complete!")
+                status_text.text(f"{omics_type.value.title()} analysis complete!")
                 
                 # Display results
-                display_results(report_path)
+                display_omics_results(report_path, omics_type, feature_name)
                 
             finally:
                 loop.close()
@@ -275,9 +380,9 @@ def run_analysis(de_file, metadata, top_n_genes, n_clusters, use_cache):
         status_text.text("Analysis failed")
 
 
-def display_results(report_path: Path):
-    """Display the analysis results."""
-    st.header("📊 Results")
+def display_omics_results(report_path: Path, omics_type: OmicsType, feature_name: str):
+    """Display the omics analysis results."""
+    st.header(f"📊 {omics_type.value.title()} Analysis Results")
     
     if report_path.exists():
         # Read the report
@@ -286,14 +391,14 @@ def display_results(report_path: Path):
         
         # Display download button
         st.download_button(
-            label="📥 Download Full Report",
+            label=f"📥 Download {omics_type.value.title()} Report",
             data=report_content,
             file_name=f"{report_path.stem}.md",
             mime="text/markdown"
         )
         
         # Display report preview
-        st.subheader("Report Preview")
+        st.subheader(f"{omics_type.value.title()} Report Preview")
         
         # Split content into sections for better display
         sections = report_content.split('\n## ')

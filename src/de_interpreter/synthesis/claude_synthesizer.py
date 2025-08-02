@@ -8,7 +8,9 @@ from anthropic import AsyncAnthropic
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from ..prioritization import PrioritizedGene, GeneCluster
+from ..prioritization.omics_prioritizer import PrioritizedOmicsFeature
 from ..parsers import ExperimentalContext
+from ..parsers.omics_data import OmicsExperimentContext
 from ..literature import Paper
 from .prompts import PromptBuilder
 
@@ -30,7 +32,7 @@ class ClaudeSynthesizer:
     """Synthesize gene discussions using Claude API."""
 
     def __init__(
-        self, api_key: Optional[str] = None, model: str = "claude-3-opus-20240229"
+        self, api_key: Optional[str] = None, model: str = "claude-sonnet-4-20250514"
     ):
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
         if not self.api_key:
@@ -223,4 +225,99 @@ class ClaudeSynthesizer:
 
         except Exception as e:
             print(f"Error generating executive summary: {e}")
+            return "Unable to generate executive summary."
+
+    async def batch_synthesize_omics(
+        self,
+        prioritized_features: List[PrioritizedOmicsFeature],
+        context: OmicsExperimentContext,
+        feature_papers: Dict[str, List[Paper]],
+    ) -> List[GeneDiscussion]:
+        """Synthesize discussions for prioritized omics features."""
+        discussions = []
+        
+        for feature in prioritized_features:
+            feature_key = feature.display_name
+            papers = feature_papers.get(feature_key, [])
+            
+            discussion = await self.synthesize_omics_feature_discussion(
+                feature, context, papers
+            )
+            discussions.append(discussion)
+            
+            # Small delay to avoid rate limiting
+            await asyncio.sleep(0.1)
+        
+        return discussions
+
+    async def synthesize_omics_feature_discussion(
+        self,
+        feature: PrioritizedOmicsFeature,
+        context: OmicsExperimentContext,
+        papers: List[Paper],
+    ) -> GeneDiscussion:
+        """Synthesize discussion for a single omics feature."""
+        prompt = self.prompt_builder.build_omics_feature_prompt(
+            feature, context, papers
+        )
+
+        try:
+            response = await self.client.messages.create(
+                model=self.model,
+                max_tokens=2000,
+                temperature=0.6,
+                system=self.prompt_builder.get_omics_system_prompt(context.omics_type),
+                messages=[{"role": "user", "content": prompt}],
+            )
+
+            response_text = response.content[0].text
+
+            # Parse the response
+            discussion_text, key_findings, therapeutic_implications, citations, confidence_score = (
+                self._parse_response(response_text)
+            )
+
+        except Exception as e:
+            print(f"Error synthesizing discussion for {feature.display_name}: {e}")
+            discussion_text = f"Unable to generate discussion for {feature.display_name}."
+            key_findings = []
+            therapeutic_implications = None
+            citations = []
+            confidence_score = 0.0
+
+        return GeneDiscussion(
+            gene_id=feature.feature_id,
+            gene_symbol=feature.feature_symbol,
+            discussion_text=discussion_text,
+            key_findings=key_findings,
+            therapeutic_implications=therapeutic_implications,
+            citations=citations,
+            confidence_score=confidence_score,
+        )
+
+    async def generate_omics_executive_summary(
+        self,
+        discussions: List[GeneDiscussion],
+        context: OmicsExperimentContext,
+        feature_summary: Dict[str, Any],
+        omics_summary: Dict[str, Any],
+    ) -> str:
+        """Generate executive summary for omics analysis."""
+        prompt = self.prompt_builder.build_omics_summary_prompt(
+            discussions, context, feature_summary, omics_summary
+        )
+
+        try:
+            response = await self.client.messages.create(
+                model=self.model,
+                max_tokens=4000,
+                temperature=0.7,
+                system=self.prompt_builder.get_omics_system_prompt(context.omics_type),
+                messages=[{"role": "user", "content": prompt}],
+            )
+
+            return response.content[0].text
+
+        except Exception as e:
+            print(f"Error generating omics executive summary: {e}")
             return "Unable to generate executive summary."

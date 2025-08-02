@@ -1,6 +1,6 @@
-# 🧬 DE Interpretation Pipeline - Web Interface
+# 🧬 Multi-Omics Interpretation Pipeline - Web Interface
 
-This Streamlit application provides an easy-to-use web interface for the Differential Expression Interpretation Pipeline.
+This Streamlit application provides an easy-to-use web interface for the Multi-Omics Interpretation Pipeline, supporting transcriptomics, proteomics, metabolomics, genomics, metagenomics, epigenomics, and lipidomics data.
 
 ## 🚀 Quick Start
 
@@ -29,14 +29,24 @@ The app will open in your browser at `http://localhost:8501`
 
 ## 📋 Features
 
+### Multi-Omics Support
+- **Transcriptomics**: Gene expression analysis
+- **Proteomics**: Protein abundance analysis  
+- **Metabolomics**: Metabolite profiling
+- **Genomics**: Genetic variation analysis
+- **Metagenomics**: Microbial community analysis
+- **Epigenomics**: Chromatin modification analysis
+- **Lipidomics**: Lipid composition analysis
+
 ### Input Methods
-- **File Upload**: Upload your own DE results (CSV/TSV/Excel) and metadata (JSON)
-- **Manual Entry**: Enter experimental metadata through web forms
-- **Example Data**: Load pre-configured Parkinson's or COVID-19 datasets
+- **File Upload**: Upload your own omics results (CSV/TSV/Excel) and metadata (JSON)
+- **Manual Entry**: Enter experimental metadata through web forms with omics-specific fields
+- **Example Data**: Load pre-configured transcriptomics datasets (Parkinson's, COVID-19)
 
 ### Analysis Parameters
-- **Top N genes**: Select how many top genes to analyze (5-100)
-- **Clustering**: Choose number of gene clusters or auto-detect
+- **Omics Type Selection**: Choose your data type for specialized analysis
+- **Top N features to prioritize**: Select how many features to prioritize (10-200)
+- **Max features for detailed analysis**: Number of top features for literature mining (5-50)
 - **Caching**: Enable/disable literature result caching
 
 ### Real-time Progress
@@ -120,7 +130,7 @@ If your DE results have different column names, you can:
 
 2. **Relevant Metadata**: Provide detailed experimental context for better literature mining
 
-3. **Appropriate Gene Count**: Start with 10-25 genes for faster results, scale up as needed
+3. **Appropriate Gene Count**: Start with 10-20 genes for detailed analysis, prioritize more for comprehensive overview
 
 4. **Caching**: Enable caching to avoid re-fetching literature for repeated analyses
 

@@ -2,7 +2,9 @@
 
 from typing import List, Dict, Any
 from ..prioritization import PrioritizedGene, GeneCluster
+from ..prioritization.omics_prioritizer import PrioritizedOmicsFeature
 from ..parsers import ExperimentalContext
+from ..parsers.omics_data import OmicsExperimentContext, OmicsType
 from ..literature import Paper
 
 
@@ -203,3 +205,194 @@ Format as a structured executive summary with clear sections and bullet points f
             summaries.append(summary)
 
         return "\n".join(summaries)
+
+    def get_omics_system_prompt(self, omics_type: OmicsType) -> str:
+        """Get omics-specific system prompt."""
+        omics_expertise = {
+            OmicsType.TRANSCRIPTOMICS: "transcriptomics and gene expression analysis",
+            OmicsType.GENOMICS: "genomics and genetic variation analysis", 
+            OmicsType.PROTEOMICS: "proteomics and protein abundance analysis",
+            OmicsType.METABOLOMICS: "metabolomics and metabolite profiling",
+            OmicsType.METAGENOMICS: "metagenomics and microbial community analysis",
+            OmicsType.EPIGENOMICS: "epigenomics and chromatin modification analysis",
+            OmicsType.LIPIDOMICS: "lipidomics and lipid metabolism analysis"
+        }
+
+        expertise_area = omics_expertise.get(omics_type, "multi-omics analysis")
+
+        return f"""You are an expert molecular biologist specializing in {expertise_area} and disease mechanisms. 
+Your role is to interpret differential {omics_type.value} results in the context of current scientific literature.
+
+Guidelines:
+1. Provide evidence-based interpretations grounded in the provided literature
+2. Consider {omics_type.value}-specific biological mechanisms and pathways
+3. Clearly distinguish between established facts and hypotheses
+4. Highlight therapeutic implications when relevant
+5. Note any contradictions or gaps in current understanding
+6. Use precise scientific language while remaining accessible
+7. Always cite sources using author-year format
+
+Structure your responses with clear sections and bullet points where appropriate."""
+
+    def build_omics_feature_prompt(
+        self, 
+        feature: PrioritizedOmicsFeature, 
+        context: OmicsExperimentContext, 
+        papers: List[Paper]
+    ) -> str:
+        """Build prompt for single omics feature discussion."""
+        
+        # Feature information
+        feature_info = f"""
+{context.get_feature_type_name().upper()} INFORMATION:
+- {context.get_feature_type_name().title()}: {feature.display_name}
+- ID: {feature.feature_id}
+- Log2 Fold Change: {feature.omics_feature.log2_fold_change:.2f} ({feature.omics_feature.fold_change:.1f}-fold {'increase' if feature.omics_feature.is_upregulated else 'decrease'})
+- Adjusted p-value: {feature.omics_feature.padj:.2e}
+- Priority rank: {feature.rank}
+- Omics type: {context.omics_type.value}
+"""
+
+        # Experimental context
+        context_info = f"""
+EXPERIMENTAL CONTEXT:
+{context.get_context_string()}
+- Platform: {context.platform or 'Not specified'}
+- Analysis method: {context.analysis_method or 'Standard differential analysis'}
+"""
+
+        # Literature summary
+        lit_summary = self._summarize_papers(papers, limit=5)
+
+        # Omics-specific questions
+        omics_questions = self._get_omics_specific_questions(context.omics_type)
+
+        # Build full prompt
+        prompt = f"""{feature_info}
+
+{context_info}
+
+RELEVANT LITERATURE:
+{lit_summary}
+
+Please provide a comprehensive discussion of this {context.get_feature_type_name()} addressing:
+
+1. **Biological Function**: What is known about the normal function of this {context.get_feature_type_name()}?
+
+2. **{context.get_omics_context().title()} Change Interpretation**: How should we interpret the observed {context.get_omics_context()} change in the context of {context.disease}?
+
+3. **Disease Relevance**: What is the relationship between this {context.get_feature_type_name()} and {context.disease} pathophysiology?
+
+{omics_questions}
+
+4. **Literature Support**: What does the current literature say about this {context.get_feature_type_name()} in relation to {context.disease}?
+
+5. **Therapeutic Implications**: Are there potential therapeutic targets or biomarker applications?
+
+6. **Confidence Assessment**: Rate your confidence in this interpretation (1-10) and explain any uncertainties.
+
+Format your response with clear headers and cite all sources using author-year format."""
+
+        return prompt
+
+    def build_omics_summary_prompt(
+        self,
+        discussions: List,
+        context: OmicsExperimentContext,
+        feature_summary: Dict[str, Any],
+        omics_summary: Dict[str, Any],
+    ) -> str:
+        """Build executive summary prompt for omics analysis."""
+        
+        # Statistical overview
+        stats_info = f"""
+ANALYSIS OVERVIEW:
+- Omics type: {context.omics_type.value}
+- Total {feature_summary.get('feature_type', 'features')} analyzed: {feature_summary.get('total_features', 'N/A')}
+- Significant {feature_summary.get('feature_type', 'features')}: {feature_summary.get('significant_features', 'N/A')}
+- Upregulated: {omics_summary.get('upregulated', 'N/A')}
+- Downregulated: {omics_summary.get('downregulated', 'N/A')}
+- Mean |log2FC|: {omics_summary.get('max_abs_log2fc', 'N/A'):.2f}
+"""
+
+        # Key findings from top features
+        top_findings = []
+        for disc in discussions[:10]:  # Top 10 features
+            if disc.key_findings:
+                feature_name = disc.gene_symbol or disc.gene_id
+                top_findings.append(f"{feature_name}: {disc.key_findings[0]}")
+
+        findings_text = "\n".join([f"- {f}" for f in top_findings])
+
+        # Context
+        context_info = f"EXPERIMENTAL CONTEXT: {context.get_context_string()}"
+
+        # Omics-specific summary questions
+        omics_summary_questions = self._get_omics_summary_questions(context.omics_type, context.disease)
+
+        prompt = f"""{stats_info}
+
+{context_info}
+
+KEY FINDINGS FROM TOP {context.get_feature_type_name().upper()}S:
+{findings_text}
+
+Based on the comprehensive {context.omics_type.value} analysis and literature review, please provide an executive summary that:
+
+1. **Major Biological Themes**: Synthesizes the key biological themes emerging from the {context.omics_type.value} data
+
+2. **Significant Findings**: Highlights the most significant and actionable findings
+
+3. **Disease Context**: Places results in the broader context of {context.disease} pathophysiology
+
+{omics_summary_questions}
+
+4. **Future Directions**: Suggests follow-up experiments or research directions
+
+5. **Clinical Relevance**: Notes potential biomarker or therapeutic applications
+
+6. **Limitations**: Acknowledges any limitations of the current analysis
+
+Format as a structured executive summary with clear sections and bullet points for key takeaways."""
+
+        return prompt
+
+    def _get_omics_specific_questions(self, omics_type: OmicsType) -> str:
+        """Get omics-type specific analysis questions."""
+        questions = {
+            OmicsType.TRANSCRIPTOMICS: "3. **Regulatory Mechanisms**: What upstream regulators or pathways might be driving this expression change?",
+            
+            OmicsType.PROTEOMICS: "3. **Protein Function**: How might changes in protein abundance affect cellular processes and pathways?",
+            
+            OmicsType.METABOLOMICS: "3. **Metabolic Impact**: How does this metabolite change affect metabolic flux and energy production?",
+            
+            OmicsType.GENOMICS: "3. **Functional Impact**: What is the predicted functional impact of this genetic variant?",
+            
+            OmicsType.METAGENOMICS: "3. **Microbial Function**: What role does this microorganism play in host health and disease?",
+            
+            OmicsType.EPIGENOMICS: "3. **Regulatory Impact**: How might this epigenetic change affect gene expression and chromatin structure?",
+            
+            OmicsType.LIPIDOMICS: "3. **Membrane Impact**: How do changes in lipid composition affect membrane function and signaling?"
+        }
+        
+        return questions.get(omics_type, "3. **Mechanistic Insights**: What mechanisms might underlie this observed change?")
+
+    def _get_omics_summary_questions(self, omics_type: OmicsType, disease: str) -> str:
+        """Get omics-specific executive summary questions."""
+        questions = {
+            OmicsType.TRANSCRIPTOMICS: f"3. **Pathway Analysis**: What key transcriptional pathways are dysregulated in {disease}?",
+            
+            OmicsType.PROTEOMICS: f"3. **Protein Networks**: What protein complexes and interaction networks are altered in {disease}?",
+            
+            OmicsType.METABOLOMICS: f"3. **Metabolic Pathways**: What metabolic pathways are perturbed in {disease}?",
+            
+            OmicsType.GENOMICS: f"3. **Genetic Architecture**: What genes and pathways are genetically associated with {disease} risk?",
+            
+            OmicsType.METAGENOMICS: f"3. **Microbiome Dysbiosis**: How is the microbial community structure altered in {disease}?",
+            
+            OmicsType.EPIGENOMICS: f"3. **Epigenetic Landscape**: What chromatin modifications and regulatory elements are altered in {disease}?",
+            
+            OmicsType.LIPIDOMICS: f"3. **Lipid Metabolism**: How is lipid homeostasis disrupted in {disease}?"
+        }
+        
+        return questions.get(omics_type, f"3. **Molecular Mechanisms**: What molecular mechanisms are altered in {disease}?")
