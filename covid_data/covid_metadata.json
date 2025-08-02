@@ -1,0 +1,14 @@
+{
+  "disease": "ARDS",
+  "tissue": "tracheal aspirate",
+  "cell_type": "tracheal aspirate",
+  "treatment": "COVID-19 ARDS",
+  "control": "Non-COVID ARDS",
+  "time_point": "1 day",
+  "organism": "human",
+  "comparison_description": "COVID-19 ARDS vs. Non-COVID ARDS",
+  "sample_size": {
+    "treatment": 15,
+    "control": 31
+  }
+}
