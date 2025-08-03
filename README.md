@@ -107,9 +107,9 @@ The tool generates:
 
 The repository includes example COVID-19 ARDS transcriptomics data from:
 
-> **Bost, P., Giladi, A., Liu, Y. et al.** Host-Viral Infection Maps Reveal Signatures of Severe COVID-19 Patients. *Nat Commun* **12**, 4312 (2021). https://doi.org/10.1038/s41467-021-25040-5
+> **Sarma, A., Christenson, S.A., Byrne, A. et al.** Tracheal aspirate RNA sequencing identifies distinct immunological features of COVID-19 ARDS. *Nat Commun* **12**, 5152 (2021). https://doi.org/10.1038/s41467-021-25040-5
 
-This dataset contains differential gene expression results from respiratory samples comparing COVID-19 ARDS patients to controls.
+This dataset contains differential gene expression results from tracheal aspirate RNA sequencing comparing COVID-19 ARDS patients to controls.
 
 ### Running the Example
 
