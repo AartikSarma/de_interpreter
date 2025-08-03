@@ -107,7 +107,8 @@ def main():
             scorer_options = {
                 "TF-IDF (Fast)": "tfidf",
                 "BM25 (Balanced)": "bm25", 
-                "BioBERT (Best Quality)": "biobert"
+                "BioBERT (Best Quality)": "biobert",
+                "Gene-Query Similarity (Gene-Aware)": "gene_query_similarity"
             }
             selected_scorer = st.selectbox(
                 "Scoring method:",

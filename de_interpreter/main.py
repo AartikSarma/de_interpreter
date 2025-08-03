@@ -273,7 +273,7 @@ async def main():
     
     # Scoring options
     parser.add_argument("--use-scoring", action="store_true", help="Enable literature relevance scoring")
-    parser.add_argument("--scorer-type", choices=["tfidf", "bm25", "biobert"], default="tfidf", 
+    parser.add_argument("--scorer-type", choices=["tfidf", "bm25", "biobert", "gene_query_similarity"], default="tfidf", 
                        help="Scoring method (default: tfidf)")
     parser.add_argument("--biobert-model", default="sentence-transformers/all-MiniLM-L6-v2",
                        help="BioBERT model for semantic scoring")

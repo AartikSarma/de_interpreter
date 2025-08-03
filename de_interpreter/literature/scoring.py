@@ -24,12 +24,15 @@ from .paper import Paper
 @dataclass
 class ScoringConfig:
     """Configuration for literature scoring."""
-    scorer_type: str = "tfidf"  # "tfidf", "bm25", "biobert"
+    scorer_type: str = "tfidf"  # "tfidf", "bm25", "biobert", "gene_query_similarity"
     biobert_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     cache_embeddings: bool = True
     cache_dir: str = "cache/embeddings"
     similarity_threshold: float = 0.1  # Minimum similarity to keep papers
     max_papers_per_query: int = 20
+    # Gene-query similarity specific options
+    gene_query_mode: bool = False  # Enable gene+query pooled approach
+    papers_per_gene: int = 10  # Papers to fetch per gene in gene-query mode
 
 
 class LiteratureScorer:
@@ -72,6 +75,8 @@ class LiteratureScorer:
                 scored_papers = await self._score_with_biobert(query, papers, progress_callback)
             elif self.config.scorer_type == "bm25":
                 scored_papers = await self._score_with_bm25(query, papers, progress_callback)
+            elif self.config.scorer_type == "gene_query_similarity":
+                scored_papers = await self._score_with_gene_query_similarity(query, papers, progress_callback)
             else:  # tfidf
                 scored_papers = await self._score_with_tfidf(query, papers, progress_callback)
             
@@ -195,11 +200,14 @@ class LiteratureScorer:
         
         try:
             # Create TF-IDF vectorizer
+            # Adjust parameters for small datasets
+            max_df = min(0.8, max(2, len(texts) * 0.8)) if len(texts) > 2 else len(texts)
+            
             vectorizer = TfidfVectorizer(
-                max_features=1000,
+                max_features=min(1000, len(texts) * 50),
                 stop_words='english',
-                ngram_range=(1, 2),
-                max_df=0.8,
+                ngram_range=(1, min(2, len(texts))),
+                max_df=max_df,
                 min_df=1
             )
             
@@ -253,6 +261,94 @@ class LiteratureScorer:
                 paper.relevance_score = paper.relevance_score * (0.8 + 0.2 * length_penalty)
         
         return papers
+    
+    async def _score_with_gene_query_similarity(
+        self, 
+        query: str, 
+        papers: List[Paper],
+        progress_callback: Optional[callable] = None
+    ) -> List[Paper]:
+        """Score papers using gene-query similarity approach (enhanced for gene sets)."""
+        
+        if progress_callback:
+            progress_callback("Computing gene-query similarity scores", 30)
+        
+        # This is a placeholder implementation - in a real gene-query similarity scorer,
+        # we would need additional gene information. For now, use enhanced TF-IDF
+        # that considers gene mentions in the text more heavily.
+        
+        # Prepare texts with gene-aware weighting
+        texts = []
+        paper_indices = []
+        
+        for i, paper in enumerate(papers):
+            text = paper.text_content
+            if text and text.strip():
+                # Weight text by potential gene mentions (simple heuristic)
+                # In practice, this would use actual gene lists from the analysis
+                weighted_text = text
+                
+                # Simple gene mention detection (this could be enhanced)
+                gene_patterns = ['gene', 'protein', 'expression', 'regulation']
+                gene_score = sum(1 for pattern in gene_patterns if pattern.lower() in text.lower())
+                
+                # Repeat gene-relevant portions to increase their weight
+                if gene_score > 0:
+                    gene_context = ' '.join([sent for sent in text.split('.') 
+                                           if any(pattern in sent.lower() for pattern in gene_patterns)])
+                    weighted_text = text + ' ' + gene_context
+                
+                texts.append(weighted_text)
+                paper_indices.append(i)
+        
+        if not texts:
+            return papers
+        
+        try:
+            # Create TF-IDF vectorizer with gene-aware parameters
+            # Adjust parameters based on number of documents
+            max_df = min(0.8, max(2, len(texts) * 0.8)) if len(texts) > 2 else len(texts)
+            
+            vectorizer = TfidfVectorizer(
+                max_features=min(1500, len(texts) * 100),  # Adjust for small datasets
+                stop_words='english',
+                ngram_range=(1, min(3, len(texts))),  # Adjust n-grams for small datasets
+                max_df=max_df,
+                min_df=1
+            )
+            
+            # Fit vectorizer on paper texts
+            paper_vectors = vectorizer.fit_transform(texts)
+            
+            # Create enhanced query with gene context hints
+            enhanced_query = f"{query} gene expression regulation protein"
+            query_vector = vectorizer.transform([enhanced_query])
+            
+            # Compute similarities
+            similarities = cosine_similarity(query_vector, paper_vectors)[0]
+            
+            # Apply gene-specific boost (papers with more gene mentions get higher scores)
+            for i, similarity in enumerate(similarities):
+                paper_idx = paper_indices[i]
+                original_text = papers[paper_idx].text_content or ""
+                
+                # Boost based on gene-related content
+                gene_mentions = sum(1 for pattern in ['gene', 'protein', 'expression', 'regulation']
+                                  if pattern.lower() in original_text.lower())
+                gene_boost = 1.0 + (gene_mentions * 0.1)  # 10% boost per gene term
+                
+                boosted_similarity = similarity * gene_boost
+                papers[paper_idx].relevance_score = float(boosted_similarity)
+            
+            if progress_callback:
+                progress_callback("Gene-query similarity scoring complete", 90)
+            
+            return papers
+            
+        except Exception as e:
+            logging.error(f"Gene-query similarity scoring error: {e}")
+            # Fallback to basic TF-IDF
+            return await self._score_with_tfidf(query, papers, progress_callback)
     
     def get_cache_key(self, text: str) -> str:
         """Generate cache key for text."""

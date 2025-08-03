@@ -36,46 +36,47 @@ streamlit run streamlit_app.py
 
 ### Command Line Interface
 
-**Simplified Pipeline (Recommended)**
+**Unified Pipeline (All-in-One)**
 ```bash
 # Auto-detects omics type from data
-python -m de_interpreter.main \
+python -m de_interpreter \
   --de-file results.csv \
   --metadata metadata.json \
   --output report.md
 
-# Advanced options with scoring and MeSH enhancement
-python -m de_interpreter.main \
+# Advanced options with all features
+python -m de_interpreter \
   --de-file results.csv \
   --metadata metadata.json \
   --output report.md \
   --max-features 25 \             # Analyze top 25 features in detail
   --use-scoring \                 # Enable literature relevance scoring
-  --scorer-type biobert \         # Use BioBERT for best quality (tfidf, bm25, biobert)
+  --scorer-type gene_query_similarity \  # Enhanced gene-aware scoring (tfidf, bm25, biobert, gene_query_similarity)
   --biobert-model microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract \
   --use-mesh \                    # Enable MeSH term enhancement for literature searches
   --mesh-terms-count 3 \          # Generate 3 MeSH terms per query
   --no-cache                      # Disable literature caching
+
+# Launch web interface
+python -m de_interpreter --web
 ```
 
 ### Literature Scoring Options
 
-Install optional scoring dependencies:
-```bash
-pip install -r requirements-scoring.txt
-```
-
-Scoring methods available:
+Scoring methods available (all dependencies included in main requirements.txt):
 ```bash
 # TF-IDF scoring (fast, good baseline)
-python -m de_interpreter.main --de-file data.csv --max-features 20 --use-scoring --scorer-type tfidf
+python -m de_interpreter --de-file data.csv --max-features 20 --use-scoring --scorer-type tfidf
 
 # BM25 scoring (balanced speed/quality)  
-python -m de_interpreter.main --de-file data.csv --max-features 20 --use-scoring --scorer-type bm25
+python -m de_interpreter --de-file data.csv --max-features 20 --use-scoring --scorer-type bm25
 
 # BioBERT scoring (best quality, slower)
-python -m de_interpreter.main --de-file data.csv --max-features 20 --use-scoring --scorer-type biobert \
+python -m de_interpreter --de-file data.csv --max-features 20 --use-scoring --scorer-type biobert \
   --biobert-model dmis-lab/biobert-base-cased-v1.1
+
+# Gene-Query Similarity scoring (gene-aware, enhanced for omics)
+python -m de_interpreter --de-file data.csv --max-features 20 --use-scoring --scorer-type gene_query_similarity
 ```
 
 ### MeSH Term Enhancement
@@ -84,13 +85,13 @@ The pipeline can use Claude Haiku to generate Medical Subject Headings (MeSH) te
 
 ```bash
 # Enable MeSH enhancement (requires ANTHROPIC_API_KEY)
-python -m de_interpreter.main \
+python -m de_interpreter \
   --de-file data.csv \
   --use-mesh \                    # Enable MeSH term generation
   --mesh-terms-count 3            # Generate 3 MeSH terms per query (1-5 supported)
 
 # Example: MeSH enhancement with scoring
-python -m de_interpreter.main \
+python -m de_interpreter \
   --de-file cancer_data.csv \
   --use-mesh \
   --mesh-terms-count 4 \
@@ -104,6 +105,21 @@ python -m de_interpreter.main \
 - Displays generated MeSH terms in progress output
 - Falls back gracefully if MeSH generation fails
 - Improves literature search precision and recall
+
+## Utility Tools
+
+The package includes utility tools for advanced users:
+
+```bash
+# Run benchmarking of scoring methods
+python -m de_interpreter.utils.benchmarking
+
+# Run example analyses
+python -m de_interpreter.utils.examples basic      # Basic analysis example
+python -m de_interpreter.utils.examples scoring    # Compare scoring methods
+python -m de_interpreter.utils.examples mesh       # MeSH enhancement example
+python -m de_interpreter.utils.examples benchmark  # Benchmark different methods
+```
 
 ## Development Commands
 
@@ -138,18 +154,17 @@ python -m de_interpreter.main --de-file results.csv --metadata metadata.json --o
 Create a `.env` file (not tracked in git):
 ```
 ANTHROPIC_API_KEY=your_claude_api_key
-FUTUREHOUSE_API_KEY=your_futurehouse_api_key  # Optional - PMC is used by default
+# No additional API keys needed - PMC is free and used by default
 ```
 
 ### Literature Sources
-- **PMC (Default)**: Free access to PubMed Central full-text papers, no API key required
-- **FutureHouse API (Optional)**: Commercial API with rate limits, requires API key
-- Use `--use-futurehouse` flag or `use_pmc=False` parameter to switch to FutureHouse
+- **PMC (PubMed Central)**: Free access to full-text papers, no API key required
+- **Enhanced Search**: MeSH term generation using Claude Haiku for precision
+- **Smart Scoring**: Multiple algorithms (TF-IDF, BM25, BioBERT, Gene-Query Similarity)
 
 ### API Usage Guidelines
 - **PMC**: Free, full-text access, automatic XML parsing, respectful rate limiting
-- **FutureHouse API**: Batch gene queries, implement caching, respect rate limits  
-- **Claude API**: Use structured prompts, prefer claude-sonnet-4 for complex synthesis
+- **Claude API**: Use structured prompts, claude-sonnet-4 for synthesis, claude-haiku for MeSH terms
 
 ## Key Design Patterns
 

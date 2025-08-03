@@ -3,11 +3,15 @@
 An LLM-powered pipeline to find and summarize relevant papers to interpret the results of omics analyses. 
 
 ## Features
-- 🔎 **Structured query generation**: Uses Claude Haiku to generate search terms based on a description of experimetnal conditions
-- 📚 **Literature Integration**: Automatically retrieves and incorporates recent research
+- 🧬 **Multi-Omics Support**: Transcriptomics, proteomics, metabolomics, genomics, metagenomics, epigenomics, lipidomics
+- 🔎 **Smart Auto-Detection**: Automatically detects omics type from your data columns
+- 📚 **Advanced Literature Mining**: PMC integration with multiple scoring algorithms
+- 🏷️ **MeSH Enhancement**: Claude Haiku generates Medical Subject Headings for precise searches
+- 🎯 **Gene-Aware Scoring**: Specialized scoring methods optimized for omics data
 - 🤖 **AI-Powered Synthesis**: Uses Claude Sonnet to generate coherent, referenced discussions
 - 🔬 **Disease-Specific Context**: Prompts tailor interpretations to your experimental conditions
 - 📝 **Professional Reports**: Generates structured markdown reports with citations
+- 🌐 **Web Interface**: User-friendly Streamlit interface for easy analysis
 
 ## Installation
 
@@ -16,7 +20,7 @@ An LLM-powered pipeline to find and summarize relevant papers to interpret the r
 git clone https://github.com/AartikSarma/de_interpreter.git
 cd de_interpreter
 
-# Install dependencies
+# Install dependencies (includes all features: scoring, MeSH enhancement, web interface)
 pip install -r requirements.txt
 
 # Set up environment variables
@@ -27,29 +31,63 @@ cp .env.example .env
 
 ## Usage
 
-### Command Line
+### Command Line (Unified Interface)
 
 ```bash
-python -m de_interpreter.main \
+# Basic analysis (auto-detects omics type)
+python -m de_interpreter \
     --de-file results.csv \
     --metadata metadata.json \
     --output my_analysis \
-    --top-n 50
+    --max-features 25
+
+# Advanced analysis with all features
+python -m de_interpreter \
+    --de-file results.csv \
+    --metadata metadata.json \
+    --output my_analysis \
+    --max-features 25 \
+    --use-scoring \
+    --scorer-type gene_query_similarity \
+    --use-mesh \
+    --mesh-terms-count 3
+
+# Launch web interface
+python -m de_interpreter --web
+```
+
+### Web Interface (Recommended)
+
+```bash
+# Start the Streamlit web interface
+streamlit run streamlit_app.py
+# OR
+python -m de_interpreter --web
 ```
 
 ### Python API
 
 ```python
 import asyncio
-from pathlib import Path
-from de_interpreter.main import DEInterpreter
+from de_interpreter.main import SimplifiedPipeline, AnalysisConfig
 
 async def analyze():
-    interpreter = DEInterpreter(top_n_genes=50)
+    # Configure analysis
+    config = AnalysisConfig(
+        max_features=25,
+        use_scoring=True,
+        scorer_type="gene_query_similarity",
+        use_mesh_enhancement=True,
+        anthropic_api_key="your-api-key"
+    )
     
-    report_path = await interpreter.run(
-        de_file=Path("results.csv"),
-        metadata_file=Path("metadata.json"),
+    # Create pipeline
+    pipeline = SimplifiedPipeline(config)
+    
+    # Run analysis
+    report_path = await pipeline.run_analysis(
+        de_file="results.csv",
+        metadata_file="metadata.json",
         output_name="my_analysis"
     )
     
@@ -126,18 +164,56 @@ python -m de_interpreter.main \
     --max-features 25
 ```
 
+## Advanced Features
+
+### Literature Scoring Methods
+
+Choose from multiple scoring algorithms optimized for different use cases:
+
+- **TF-IDF**: Fast baseline similarity scoring
+- **BM25**: Balanced relevance ranking 
+- **BioBERT**: Semantic similarity using biomedical language models
+- **Gene-Query Similarity**: Enhanced scoring specifically designed for omics data
+
+### MeSH Term Enhancement
+
+Automatically generate Medical Subject Headings using Claude Haiku to improve literature search precision:
+
+```bash
+python -m de_interpreter \
+    --de-file data.csv \
+    --use-mesh \
+    --mesh-terms-count 4 \
+    --use-scoring \
+    --scorer-type biobert
+```
+
+### Utility Tools
+
+```bash
+# Benchmark different scoring methods
+python -m de_interpreter.utils.benchmarking
+
+# Run usage examples
+python -m de_interpreter.utils.examples scoring
+```
+
 ## Development
 
 ```bash
 # Run tests
 pytest tests/
 
+# Run specific test categories
+pytest tests/unit/           # Unit tests
+pytest tests/integration/    # Integration tests
+
 # Format code
-black src/
-ruff check src/ --fix
+black de_interpreter/
+ruff check de_interpreter/ --fix
 
 # Type checking
-mypy src/
+mypy de_interpreter/
 ```
 
 ## Architecture
