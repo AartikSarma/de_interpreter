@@ -1,29 +1,19 @@
-# DE Interpreter
+# Omics interpreter
 
-A sophisticated agent that transforms differential expression (DE) results into interpretable, literature-backed discussions contextualized by disease and experimental conditions.
-
-## Overview
-
-Traditional pathway analysis often produces generic lists of enriched pathways that lack disease-specific context. DE Interpreter addresses this by:
-
-- **Prioritizing genes** based on statistical and biological importance
-- **Mining relevant literature** using the FutureHouse Paper Search API
-- **Generating contextual discussions** using Claude-3 Opus
-- **Producing comprehensive reports** with gene-specific and cluster-based analyses
+An LLM-powered pipeline to find and summarize relevant papers to interpret the results of omics analyses. 
 
 ## Features
-
-- 📊 **Smart Gene Prioritization**: Combines statistical significance, effect size, and biological relevance
+- 🔎 **Structured query generation**: Uses Claude Haiku to generate search terms based on a description of experimetnal conditions
 - 📚 **Literature Integration**: Automatically retrieves and incorporates recent research
-- 🤖 **AI-Powered Synthesis**: Uses Claude to generate coherent, referenced discussions
-- 🔬 **Disease-Specific Context**: Tailors interpretations to your experimental conditions
+- 🤖 **AI-Powered Synthesis**: Uses Claude Sonnet to generate coherent, referenced discussions
+- 🔬 **Disease-Specific Context**: Prompts tailor interpretations to your experimental conditions
 - 📝 **Professional Reports**: Generates structured markdown reports with citations
 
 ## Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/de_interpreter.git
+git clone https://github.com/AartikSarma/de_interpreter.git
 cd de_interpreter
 
 # Install dependencies
@@ -33,7 +23,6 @@ pip install -r requirements.txt
 cp .env.example .env
 # Edit .env with your API keys:
 # ANTHROPIC_API_KEY=your_claude_api_key
-# FUTUREHOUSE_API_KEY=your_futurehouse_api_key
 ```
 
 ## Usage
@@ -79,10 +68,6 @@ Required columns:
 - pvalue (or p_value)
 - padj (or p_adj, FDR)
 
-Optional columns:
-- gene_symbol
-- baseMean (or base_mean)
-- gene_name
 
 ### Metadata File (JSON/YAML)
 
@@ -214,6 +199,6 @@ Contributions are welcome! Please submit pull requests or open issues for bugs a
 If you use DE Interpreter in your research, please cite:
 
 ```
-DE Interpreter: AI-Powered Differential Expression Analysis
-https://github.com/yourusername/de_interpreter
+Omics Interpreter: AI-Powered Omics Analysis
+https://github.com/AartikSarma/de_interpreter
 ```
