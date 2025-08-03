@@ -103,17 +103,27 @@ The tool generates:
 
 ## Example
 
-```bash
-# Download example data
-wget https://example.com/alzheimers_de_results.csv
-wget https://example.com/alzheimers_metadata.json
+### COVID-19 ARDS Example Data
 
-# Run analysis
+The repository includes example COVID-19 ARDS transcriptomics data from:
+
+> **Bost, P., Giladi, A., Liu, Y. et al.** Host-Viral Infection Maps Reveal Signatures of Severe COVID-19 Patients. *Nat Commun* **12**, 4312 (2021). https://doi.org/10.1038/s41467-021-25040-5
+
+This dataset contains differential gene expression results from respiratory samples comparing COVID-19 ARDS patients to controls.
+
+### Running the Example
+
+```bash
+# Using the web interface (recommended)
+streamlit run streamlit_app.py
+# Then click "🦠 COVID-19 ARDS" example button
+
+# Or via command line
 python -m de_interpreter.main \
-    --de-file alzheimers_de_results.csv \
-    --metadata alzheimers_metadata.json \
-    --output alzheimers_analysis \
-    --top-n 100
+    --de-file covid_data/covid_deg_fixed.csv \
+    --metadata covid_data/covid_metadata.json \
+    --output covid_analysis \
+    --max-features 25
 ```
 
 ## Development
