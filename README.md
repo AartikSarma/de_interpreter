@@ -150,8 +150,55 @@ mypy src/
 ```
 Input Processing → Gene Prioritization → Literature Mining → AI Synthesis → Report Generation
       ↓                    ↓                    ↓                ↓              ↓
-   DE Parser          Statistical &         FutureHouse      Claude API    Markdown
-   Metadata Parser    Biological Scoring    Paper Search                   Reports
+   DE Parser          Statistical &         PMC/Literature   Claude API    Markdown
+   Metadata Parser    Biological Scoring    Scoring                        Reports
+```
+
+## Additional Tools
+
+### Standalone Scoring Scripts (`scripts/`)
+
+The project includes several standalone utility scripts for gene-query literature analysis:
+
+#### Gene-Query Similarity Scoring
+```bash
+# Basic gene scoring against a literature query
+python scripts/gene_query_similarity_scorer.py \
+    --genes TP53 BRCA1 MYC \
+    --query "cancer progression" \
+    --top-papers 20
+
+# With output file
+python scripts/gene_query_similarity_scorer.py \
+    --genes FAM71A P2RY14 CAB39L \
+    --query "COVID-19 inflammatory response" \
+    --output results.json
+```
+
+#### Claude-Enhanced Scoring
+```bash
+# Use Claude Haiku to generate MeSH terms for enhanced searches
+python scripts/claude_enhanced_gene_scorer.py \
+    --genes IFNG TNF IL6 \
+    --query "immune response" \
+    --mesh-terms 5
+```
+
+#### Integration Examples
+```bash
+# Example showing how to integrate with de_interpreter components
+python scripts/example_gene_query_scoring.py
+```
+
+See `scripts/README.md` for detailed documentation and `docs/` for comprehensive guides.
+
+### Benchmarking Tools
+```bash
+# Benchmark different scoring methods
+python scripts/benchmark_scoring.py
+
+# Test individual paper scoring
+python scripts/score_query_vs_pmid.py "cancer gene expression" 12345678
 ```
 
 ## License

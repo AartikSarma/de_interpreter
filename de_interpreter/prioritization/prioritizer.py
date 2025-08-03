@@ -36,7 +36,7 @@ class OmicsPrioritizer:
         self,
         features: List[OmicsFeature],
         context: OmicsExperimentContext,
-        top_n: Optional[int] = None
+        max_features: Optional[int] = None
     ) -> List[PrioritizedFeature]:
         """Prioritize features based on statistical and biological significance."""
         
@@ -74,9 +74,9 @@ class OmicsPrioritizer:
         # Sort by combined score (descending)
         prioritized_features.sort(key=lambda x: x.combined_score, reverse=True)
         
-        # Return top N if specified
-        if top_n:
-            prioritized_features = prioritized_features[:top_n]
+        # Return max features if specified
+        if max_features:
+            prioritized_features = prioritized_features[:max_features]
         
         return prioritized_features
     

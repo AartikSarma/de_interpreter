@@ -17,6 +17,9 @@ class SearchResult:
     papers: List[Paper]
     search_date: datetime
     total_found: int
+    mesh_terms: Optional[List[str]] = None
+    enhanced_query: Optional[str] = None
+    enhancement_method: Optional[str] = None
 
 
 class LiteratureCache:
@@ -64,7 +67,10 @@ class LiteratureCache:
                 query=data['query'],
                 papers=papers,
                 search_date=datetime.fromisoformat(data['search_date']),
-                total_found=data['total_found']
+                total_found=data['total_found'],
+                mesh_terms=data.get('mesh_terms'),
+                enhanced_query=data.get('enhanced_query'),
+                enhancement_method=data.get('enhancement_method')
             )
             
         except Exception:
@@ -97,7 +103,10 @@ class LiteratureCache:
             'query': result.query,
             'papers': papers_data,
             'search_date': result.search_date.isoformat(),
-            'total_found': result.total_found
+            'total_found': result.total_found,
+            'mesh_terms': result.mesh_terms,
+            'enhanced_query': result.enhanced_query,
+            'enhancement_method': result.enhancement_method
         }
         
         with open(cache_file, 'w') as f:

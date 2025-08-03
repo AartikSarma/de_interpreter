@@ -3,14 +3,14 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
-This is a **Unified Multi-Omics Interpretation Pipeline** that transforms differential omics results into literature-backed, disease-contextualized discussions. The pipeline supports **7 omics types**: transcriptomics, proteomics, metabolomics, genomics, metagenomics, epigenomics, and lipidomics with **automatic omics type detection**. It uses the Claude API for synthesis and PMC (PubMed Central) for literature mining with full-text access and optional AI-powered relevance scoring.
+This is a **Unified Multi-Omics Interpretation Pipeline** that transforms differential omics results into literature-backed, disease-contextualized discussions. The pipeline supports **7 omics types**: transcriptomics, proteomics, metabolomics, genomics, metagenomics, epigenomics, and lipidomics with **automatic omics type detection**. It uses the Claude API for synthesis and PMC (PubMed Central) for literature mining with full-text access, optional AI-powered relevance scoring, and **MeSH term enhancement** for improved literature search precision.
 
 ## Core Architecture
 
 ### Key Components
 1. **Unified Input Processing**: Automatically detects and parses any omics data type with intelligent column mapping
 2. **Omics-Aware Prioritization**: Filters and ranks features using omics-specific biological scoring
-3. **Literature Mining**: Uses PMC for full-text papers with optional BioBERT/TF-IDF/BM25 relevance scoring
+3. **Literature Mining**: Uses PMC for full-text papers with optional BioBERT/TF-IDF/BM25 relevance scoring and MeSH term enhancement
 4. **Unified Synthesis Engine**: Generates omics-specific discussions using specialized prompts
 5. **Omics-Agnostic Reporting**: Produces structured reports adapted to each omics type
 
@@ -44,16 +44,17 @@ python -m de_interpreter.main \
   --metadata metadata.json \
   --output report.md
 
-# Advanced options with scoring
+# Advanced options with scoring and MeSH enhancement
 python -m de_interpreter.main \
   --de-file results.csv \
   --metadata metadata.json \
   --output report.md \
-  --top-n 100 \                   # Prioritize top 100 features
-  --max-analysis 25 \             # Analyze top 25 features in detail
+  --max-features 25 \             # Analyze top 25 features in detail
   --use-scoring \                 # Enable literature relevance scoring
   --scorer-type biobert \         # Use BioBERT for best quality (tfidf, bm25, biobert)
   --biobert-model microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract \
+  --use-mesh \                    # Enable MeSH term enhancement for literature searches
+  --mesh-terms-count 3 \          # Generate 3 MeSH terms per query
   --no-cache                      # Disable literature caching
 ```
 
@@ -67,15 +68,42 @@ pip install -r requirements-scoring.txt
 Scoring methods available:
 ```bash
 # TF-IDF scoring (fast, good baseline)
-python -m de_interpreter.main --de-file data.csv --use-scoring --scorer-type tfidf
+python -m de_interpreter.main --de-file data.csv --max-features 20 --use-scoring --scorer-type tfidf
 
 # BM25 scoring (balanced speed/quality)  
-python -m de_interpreter.main --de-file data.csv --use-scoring --scorer-type bm25
+python -m de_interpreter.main --de-file data.csv --max-features 20 --use-scoring --scorer-type bm25
 
 # BioBERT scoring (best quality, slower)
-python -m de_interpreter.main --de-file data.csv --use-scoring --scorer-type biobert \
+python -m de_interpreter.main --de-file data.csv --max-features 20 --use-scoring --scorer-type biobert \
   --biobert-model dmis-lab/biobert-base-cased-v1.1
 ```
+
+### MeSH Term Enhancement
+
+The pipeline can use Claude Haiku to generate Medical Subject Headings (MeSH) terms for enhanced literature searches:
+
+```bash
+# Enable MeSH enhancement (requires ANTHROPIC_API_KEY)
+python -m de_interpreter.main \
+  --de-file data.csv \
+  --use-mesh \                    # Enable MeSH term generation
+  --mesh-terms-count 3            # Generate 3 MeSH terms per query (1-5 supported)
+
+# Example: MeSH enhancement with scoring
+python -m de_interpreter.main \
+  --de-file cancer_data.csv \
+  --use-mesh \
+  --mesh-terms-count 4 \
+  --use-scoring \
+  --scorer-type biobert
+```
+
+**MeSH Enhancement Features:**
+- Automatically generates relevant MeSH terms using Claude Haiku
+- Enhances PubMed search queries with proper MeSH syntax
+- Displays generated MeSH terms in progress output
+- Falls back gracefully if MeSH generation fails
+- Improves literature search precision and recall
 
 ## Development Commands
 
@@ -90,18 +118,18 @@ pytest tests/
 pytest tests/test_parsers.py::test_de_parser
 
 # Lint code
-ruff check src/
-black src/ --check
+ruff check de_interpreter/
+black de_interpreter/ --check
 
 # Format code
-black src/
-ruff check src/ --fix
+black de_interpreter/
+ruff check de_interpreter/ --fix
 
 # Type checking
-mypy src/
+mypy de_interpreter/
 
 # Run the agent
-python -m de_interpreter.main --de-file results.csv --metadata metadata.json --output report.md
+python -m de_interpreter.main --de-file results.csv --metadata metadata.json --output report.md --max-features 25
 ```
 
 ## API Configuration

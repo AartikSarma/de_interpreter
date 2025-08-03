@@ -18,8 +18,7 @@ from .reporting.report_generator import ReportGenerator
 @dataclass
 class AnalysisConfig:
     """Configuration for analysis pipeline."""
-    top_n: int = 100
-    max_analysis: int = 25
+    max_features: int = 25  # Maximum number of features to analyze in detail
     use_cache: bool = True
     cache_dir: str = "cache/literature"
     output_dir: str = "output"
@@ -29,6 +28,9 @@ class AnalysisConfig:
     use_scoring: bool = False
     scorer_type: str = "tfidf"  # "tfidf", "bm25", "biobert"
     biobert_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    # Optional MeSH enhancement configuration
+    use_mesh_enhancement: bool = False
+    mesh_terms_count: int = 3
 
 
 class SimplifiedPipeline:
@@ -69,8 +71,8 @@ class SimplifiedPipeline:
             if self.config.progress_callback:
                 self.config.progress_callback("Prioritizing features...", 10)
             
-            prioritized_features = self.prioritizer.prioritize(features, context, self.config.top_n)
-            analysis_features = prioritized_features[:self.config.max_analysis]
+            prioritized_features = self.prioritizer.prioritize(features, context, self.config.max_features)
+            analysis_features = prioritized_features[:self.config.max_features]
             print(f"Prioritized {len(prioritized_features)} features, analyzing top {len(analysis_features)}")
             
             # Step 3: Generate summaries
@@ -90,6 +92,9 @@ class SimplifiedPipeline:
                     use_scoring=self.config.use_scoring,
                     scorer_type=self.config.scorer_type,
                     biobert_model=self.config.biobert_model,
+                    use_mesh_enhancement=self.config.use_mesh_enhancement,
+                    anthropic_api_key=self.config.anthropic_api_key,
+                    mesh_terms_count=self.config.mesh_terms_count,
                     progress_callback=self.config.progress_callback
                 ) as pmc_client:
                     literature_results = []
@@ -262,8 +267,7 @@ async def main():
     parser.add_argument("--de-file", required=True, help="Path to DE results file")
     parser.add_argument("--metadata", help="Path to metadata file")
     parser.add_argument("--output", default="omics_analysis_report", help="Output file name")
-    parser.add_argument("--top-n", type=int, default=100, help="Number of features to prioritize")
-    parser.add_argument("--max-analysis", type=int, default=25, help="Number of features to analyze in detail")
+    parser.add_argument("--max-features", type=int, default=25, help="Maximum number of features to analyze in detail")
     parser.add_argument("--no-cache", action="store_true", help="Disable literature caching")
     parser.add_argument("--output-dir", default="output", help="Output directory")
     
@@ -273,6 +277,11 @@ async def main():
                        help="Scoring method (default: tfidf)")
     parser.add_argument("--biobert-model", default="sentence-transformers/all-MiniLM-L6-v2",
                        help="BioBERT model for semantic scoring")
+    
+    # MeSH enhancement options
+    parser.add_argument("--use-mesh", action="store_true", help="Enable MeSH term enhancement for literature searches")
+    parser.add_argument("--mesh-terms-count", type=int, default=3, 
+                       help="Number of MeSH terms to generate (default: 3)")
     
     args = parser.parse_args()
     
@@ -290,15 +299,16 @@ async def main():
     
     # Configure pipeline
     config = AnalysisConfig(
-        top_n=args.top_n,
-        max_analysis=args.max_analysis,
+        max_features=args.max_features,
         use_cache=not args.no_cache,
         output_dir=args.output_dir,
         anthropic_api_key=api_key,
         progress_callback=progress_callback,
         use_scoring=args.use_scoring,
         scorer_type=args.scorer_type,
-        biobert_model=args.biobert_model
+        biobert_model=args.biobert_model,
+        use_mesh_enhancement=args.use_mesh,
+        mesh_terms_count=args.mesh_terms_count
     )
     
     # Run analysis

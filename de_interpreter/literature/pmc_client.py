@@ -17,6 +17,13 @@ try:
 except ImportError:
     SCORING_AVAILABLE = False
 
+# Optional MeSH enhancement import
+try:
+    from .mesh_enhancer import MeshQueryEnhancer, create_mesh_enhancer
+    MESH_AVAILABLE = True
+except ImportError:
+    MESH_AVAILABLE = False
+
 
 class PMCClient:
     """Simplified PMC client for literature search."""
@@ -26,11 +33,17 @@ class PMCClient:
         use_scoring: bool = False,
         scorer_type: str = "tfidf",
         biobert_model: str = "sentence-transformers/all-MiniLM-L6-v2",
+        use_mesh_enhancement: bool = False,
+        anthropic_api_key: Optional[str] = None,
+        mesh_terms_count: int = 3,
         progress_callback: Optional[callable] = None
     ):
         self.use_scoring = use_scoring and SCORING_AVAILABLE
         self.scorer_type = scorer_type
         self.biobert_model = biobert_model
+        self.use_mesh_enhancement = use_mesh_enhancement and MESH_AVAILABLE
+        self.anthropic_api_key = anthropic_api_key
+        self.mesh_terms_count = mesh_terms_count
         self.progress_callback = progress_callback
         self.session = None
         
@@ -49,6 +62,25 @@ class PMCClient:
                 self.use_scoring = False
                 if progress_callback:
                     progress_callback(f"Failed to initialize scorer: {e}", 0)
+        
+        # Initialize MeSH enhancer if requested and available
+        self.mesh_enhancer = None
+        if self.use_mesh_enhancement:
+            try:
+                self.mesh_enhancer = create_mesh_enhancer(
+                    api_key=anthropic_api_key,
+                    enable_mesh=True
+                )
+                if not self.mesh_enhancer.is_available():
+                    self.mesh_enhancer = None
+                    self.use_mesh_enhancement = False
+                    if progress_callback:
+                        progress_callback("MeSH enhancement not available - continuing without enhancement", 0)
+            except Exception as e:
+                self.mesh_enhancer = None
+                self.use_mesh_enhancement = False
+                if progress_callback:
+                    progress_callback(f"Failed to initialize MeSH enhancer: {e}", 0)
     
     async def __aenter__(self):
         self.session = aiohttp.ClientSession()
@@ -63,11 +95,36 @@ class PMCClient:
         if self.progress_callback:
             self.progress_callback(f"Searching PMC for: {query[:50]}...", 10)
         
-        # Search PubMed
+        # Step 1: Enhance query with MeSH terms if enabled
+        final_query = query
+        mesh_enhanced_query = None
+        
+        if self.use_mesh_enhancement and self.mesh_enhancer:
+            try:
+                mesh_enhanced_query = await self.mesh_enhancer.enhance_query(
+                    query, 
+                    n_terms=self.mesh_terms_count, 
+                    progress_callback=self.progress_callback
+                )
+                
+                # Display MeSH enhancement information
+                self.mesh_enhancer.display_enhancement_info(
+                    mesh_enhanced_query, 
+                    progress_callback=self.progress_callback
+                )
+                
+                # Use enhanced query for search
+                final_query = mesh_enhanced_query.enhanced_query
+                
+            except Exception as e:
+                if self.progress_callback:
+                    self.progress_callback(f"MeSH enhancement failed: {e}", 0)
+        
+        # Step 2: Search PubMed with final query
         search_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
         search_params = {
             "db": "pubmed",
-            "term": query,
+            "term": final_query,
             "retmax": limit,
             "retmode": "json"
         }
@@ -110,12 +167,21 @@ class PMCClient:
             if self.progress_callback:
                 self.progress_callback(f"Search complete: {len(papers)} papers", 100)
             
-            return SearchResult(
+            # Store enhanced query info if available
+            result = SearchResult(
                 query=query,
                 papers=papers,
                 search_date=datetime.now(),
                 total_found=len(papers)
             )
+            
+            # Add MeSH enhancement metadata if available
+            if mesh_enhanced_query:
+                result.mesh_terms = mesh_enhanced_query.mesh_terms
+                result.enhanced_query = mesh_enhanced_query.enhanced_query
+                result.enhancement_method = mesh_enhanced_query.enhancement_method
+            
+            return result
             
         except Exception as e:
             print(f"Error searching PMC: {e}")
