@@ -1,0 +1,26 @@
+name: Claude AI Assistant
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  claude-assistant:
+    runs-on: ubuntu-latest
+    if: contains(github.event.comment.body, '@claude') || github.event_name == 'pull_request'
+    
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0
+    
+    - name: Claude AI Assistant
+      uses: anthropics/claude-github-action@v1
+      with:
+        anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+        github-token: ${{ secrets.GITHUB_TOKEN }}
