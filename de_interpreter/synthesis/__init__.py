@@ -1,5 +1,5 @@
 """Synthesis modules."""
 
-from .synthesizer import OmicsSynthesizer, FeatureDiscussion
+from .synthesizer import OmicsSynthesizer, FeatureDiscussion, CitationInfo
 
-__all__ = ["OmicsSynthesizer", "FeatureDiscussion"]
+__all__ = ["OmicsSynthesizer", "FeatureDiscussion", "CitationInfo"]

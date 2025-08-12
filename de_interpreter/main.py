@@ -219,6 +219,7 @@ Further literature analysis would be beneficial to understand the functional imp
                     f"Priority score: {pf.combined_score:.2f}"
                 ],
                 citations=[],
+                citation_info=[],
                 therapeutic_implications="Literature analysis required for detailed therapeutic insights."
             ))
         
