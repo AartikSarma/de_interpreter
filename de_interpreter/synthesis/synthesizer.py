@@ -11,6 +11,16 @@ from ..parsers.omics_data import OmicsExperimentContext
 
 
 @dataclass
+class CitationInfo:
+    """Container for citation information from Claude API."""
+    source_id: str
+    quote: str
+    start_char: int
+    end_char: int
+    paper_citation: str
+    paper_url: str
+
+@dataclass
 class FeatureDiscussion:
     """Container for feature discussion results."""
     feature_id: str
@@ -18,11 +28,14 @@ class FeatureDiscussion:
     discussion_text: str
     key_findings: List[str]
     citations: List[str] = None
+    citation_info: List[CitationInfo] = None
     therapeutic_implications: Optional[str] = None
     
     def __post_init__(self):
         if self.citations is None:
             self.citations = []
+        if self.citation_info is None:
+            self.citation_info = []
 
 
 class OmicsSynthesizer:
@@ -64,27 +77,46 @@ class OmicsSynthesizer:
         """Synthesize discussion for a single feature."""
         feature = prioritized_feature.feature
         
-        # Build literature context
-        literature_context = ""
-        citations = []
+        # Prepare papers for citation support
+        papers = literature_result.papers[:3]  # Use top 3 papers
+        source_papers = {f"pmid_{paper.pmid}": paper for paper in papers}
         
-        for paper in literature_result.papers[:3]:  # Use top 3 papers
+        # Build literature context for prompt
+        literature_context = ""
+        basic_citations = []
+        
+        for paper in papers:
             if paper.abstract:
                 literature_context += f"\n\nTitle: {paper.title}\nAbstract: {paper.abstract[:500]}..."
-                citations.append(paper.citation)
+                basic_citations.append(paper.citation)
         
         # Build synthesis prompt
         prompt = self._build_synthesis_prompt(feature, prioritized_feature, context, literature_context)
         
         try:
-            # Call Claude API
-            response = self.client.messages.create(
-                model="claude-sonnet-4-20250514",
-                max_tokens=1000,
-                messages=[{"role": "user", "content": prompt}]
-            )
+            # Prepare sources for Claude API citations
+            sources = [paper.to_claude_source() for paper in papers if paper.text_content]
+            
+            # Call Claude API with sources for citations
+            if sources:
+                response = self.client.messages.create(
+                    model="claude-sonnet-4-20250514",
+                    max_tokens=1000,
+                    messages=[{"role": "user", "content": prompt}],
+                    sources=sources
+                )
+            else:
+                # Fallback to basic API call without sources
+                response = self.client.messages.create(
+                    model="claude-sonnet-4-20250514",
+                    max_tokens=1000,
+                    messages=[{"role": "user", "content": prompt}]
+                )
             
             discussion_text = response.content[0].text
+            
+            # Parse citations from response
+            citation_info = self._parse_citations_from_response(response, source_papers)
             
             # Extract key findings (simple heuristic)
             key_findings = self._extract_key_findings(discussion_text, feature)
@@ -97,7 +129,8 @@ class OmicsSynthesizer:
                 feature_symbol=feature.feature_symbol,
                 discussion_text=discussion_text,
                 key_findings=key_findings,
-                citations=citations,
+                citations=basic_citations,
+                citation_info=citation_info,
                 therapeutic_implications=therapeutic_implications
             )
             
@@ -147,6 +180,30 @@ Focus on connecting the expression change to the biological context and disease 
         """.strip()
         
         return prompt
+    
+    def _parse_citations_from_response(self, response, source_papers: Dict[str, "Paper"]) -> List[CitationInfo]:
+        """Parse citation information from Claude API response."""
+        citation_info = []
+        
+        try:
+            # Check if response has citations
+            if hasattr(response.content[0], 'citations') and response.content[0].citations:
+                for citation in response.content[0].citations:
+                    source_id = citation.get('source_id', '')
+                    if source_id in source_papers:
+                        paper = source_papers[source_id]
+                        citation_info.append(CitationInfo(
+                            source_id=source_id,
+                            quote=citation.get('quote', ''),
+                            start_char=citation.get('start_char', 0),
+                            end_char=citation.get('end_char', 0),
+                            paper_citation=paper.citation,
+                            paper_url=paper.pmc_url
+                        ))
+        except Exception as e:
+            print(f"Warning: Could not parse citations from response: {e}")
+        
+        return citation_info
     
     def _extract_key_findings(self, discussion_text: str, feature: "OmicsFeature") -> List[str]:
         """Extract key findings from discussion text."""
@@ -213,6 +270,7 @@ the functional implications of this expression change.
             discussion_text=discussion_text,
             key_findings=key_findings,
             citations=[],
+            citation_info=[],
             therapeutic_implications="Further analysis required for therapeutic insights."
         )
     

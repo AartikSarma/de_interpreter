@@ -159,6 +159,20 @@ class ReportGenerator:
             if discussion.therapeutic_implications:
                 content.append(f"\n**Therapeutic Implications:** {discussion.therapeutic_implications}")
             
+            # Add citations with Claude API citation info if available
+            if discussion.citation_info:
+                content.append("\n**Citations:**")
+                for citation in discussion.citation_info:
+                    if citation.quote:
+                        content.append(f'- "{citation.quote}" - [{citation.paper_citation}]({citation.paper_url})')
+                    else:
+                        content.append(f"- [{citation.paper_citation}]({citation.paper_url})")
+            elif discussion.citations:
+                # Fallback to basic citations
+                content.append("\n**References:**")
+                for citation in discussion.citations:
+                    content.append(f"- {citation}")
+            
             content.append("\n---\n")
 
         return "\n".join(content)
@@ -215,6 +229,8 @@ class ReportGenerator:
 - **Database**: PubMed Central (PMC) scientific literature database
 - **Search Strategy**: {feature_type.title()}-specific queries combined with disease context
 - **Synthesis**: AI-powered interpretation using Claude-4 language model
+- **Citations**: Automated citation tracking with Claude API for source attribution
+- **Links**: Direct links to PubMed entries for all cited papers
 
 ### Report Generation
 - **Analysis Date**: {datetime.now().strftime("%Y-%m-%d")}
@@ -224,14 +240,30 @@ class ReportGenerator:
     def _generate_references(self, discussions: List[FeatureDiscussion]) -> str:
         """Generate references section."""
         all_citations = set()
+        citation_urls = {}
 
         for disc in discussions:
+            # Add citations from Claude API citation info
+            if disc.citation_info:
+                for citation_info in disc.citation_info:
+                    citation_text = citation_info.paper_citation
+                    all_citations.add(citation_text)
+                    citation_urls[citation_text] = citation_info.paper_url
+            
+            # Add fallback citations
             all_citations.update(disc.citations)
 
         content = ["## References\n"]
+        
+        if not all_citations:
+            content.append("No references cited in this analysis.")
+            return "\n".join(content)
 
         for i, citation in enumerate(sorted(all_citations)[:50], 1):  # Limit to 50
-            content.append(f"{i}. {citation}")
+            if citation in citation_urls:
+                content.append(f"{i}. [{citation}]({citation_urls[citation]})")
+            else:
+                content.append(f"{i}. {citation}")
 
         return "\n".join(content)
 
